@@ -165,61 +165,9 @@ const NEWS = [
     tag: "Info",
   },
 ];
+const NOTIFS = [];
 
-const NOTIFS = [
-  {
-    id: 1,
-    icon: Package,
-    title: "Nouveau produit disponible",
-    time: "Il y a 2 h",
-    read: false,
-  },
-  {
-    id: 2,
-    icon: ArrowDownToLine,
-    title: "Dépôt confirmé — 25 000 FCFA",
-    time: "Hier, 14:32",
-    read: false,
-  },
-  {
-    id: 3,
-    icon: ArrowUpFromLine,
-    title: "Retrait traité — 10 000 FCFA",
-    time: "Hier, 09:10",
-    read: true,
-  },
-  {
-    id: 4,
-    icon: Megaphone,
-    title: "Promotion active ce week-end",
-    time: "Il y a 2 jours",
-    read: true,
-  },
-];
-
-const REWARDS = [
-  {
-    id: 1,
-    title: "Bonus de bienvenue",
-    amount: 1000,
-    status: "Crédité",
-    icon: Gift,
-  },
-  {
-    id: 2,
-    title: "Récompense d'achat",
-    amount: 2500,
-    status: "Crédité",
-    icon: Award,
-  },
-  {
-    id: 3,
-    title: "Récompense de fidélité",
-    amount: 1500,
-    status: "En attente",
-    icon: Crown,
-  },
-];
+const REWARDS = [];
 
 function uid() {
   return Math.random().toString(36).slice(2, 9);
@@ -508,6 +456,22 @@ function useAppState() {
     loadHistory,
     loadReferralStats,
   };
+  const logout = useCallback(() => {
+    localStorage.removeItem("lionToken");
+    setAuth(null);
+    setScreen("welcome");
+    setTab("home");
+    setSubScreen(null);
+    setHistory([]);
+    setBalance(0);
+    setActiveProducts([]);
+    setDeposits([]);
+    setWithdrawals([]);
+    setPurchases([]);
+    NOTIFS.length = 0; // ← AJOUTE CETTE LIGNE
+    REWARDS.length = 0; // ← ET CELLE-CI
+    showToast("Déconnexion réussie.");
+  }, [showToast]);
 }
 
 /* ============================================================
@@ -1349,17 +1313,19 @@ function HomeScreen({ state }) {
             }}
           >
             <Bell size={19} />
-            <span
-              style={{
-                position: "absolute",
-                top: 7,
-                right: 8,
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                background: T.gold,
-              }}
-            />
+            {NOTIFS.some((n) => !n.read) && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 7,
+                  right: 8,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  background: T.gold,
+                }}
+              />
+            )}
           </button>
         </div>
 
@@ -2557,55 +2523,66 @@ function RewardsScreen({ state }) {
   return (
     <div>
       <TopBar title="Mes récompenses" onBack={state.goBack} />
-      <div
-        style={{
-          padding: "18px 20px 32px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        {REWARDS.map((r) => {
-          const Icon = r.icon;
-          return (
-            <div
-              key={r.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                background: T.grayBg,
-                borderRadius: 16,
-                padding: "14px 16px",
-              }}
-            >
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  background: T.goldSoft,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon size={20} color={T.gold} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>
-                  {r.title}
+      <div style={{ padding: "18px 20px 32px", textAlign: "center" }}>
+        {REWARDS.length === 0 ? (
+          <div style={{ padding: "40px 0" }}>
+            <Gift size={40} color={T.greenSoft} style={{ marginBottom: 12 }} />
+            <p style={{ fontSize: 14, color: T.inkSoft }}>
+              Aucune récompense pour le moment. Invitez des amis pour en gagner
+              !
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {REWARDS.map((r) => {
+              const Icon = r.icon;
+              return (
+                <div
+                  key={r.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    background: T.grayBg,
+                    borderRadius: 16,
+                    padding: "14px 16px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: T.goldSoft,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Icon size={20} color={T.gold} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{ fontSize: 14, fontWeight: 700, color: T.ink }}
+                    >
+                      {r.title}
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}
+                    >
+                      {r.status}
+                    </div>
+                  </div>
+                  <div
+                    style={{ fontSize: 14, fontWeight: 800, color: T.green }}
+                  >
+                    +{formatFCFA(r.amount)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}>
-                  {r.status}
-                </div>
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 800, color: T.green }}>
-                +{formatFCFA(r.amount)}
-              </div>
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2750,76 +2727,81 @@ function NotificationsScreen({ state }) {
   return (
     <div>
       <TopBar title="Notifications" onBack={state.goBack} />
-      <div
-        style={{
-          padding: "18px 20px 32px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {NOTIFS.map((n) => {
-          const Icon = n.icon;
-          return (
-            <div
-              key={n.id}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
-                padding: "14px 16px",
-                borderRadius: 14,
-                background: n.read ? T.white : T.greenSoft,
-                border: `1px solid ${T.border}`,
-              }}
-            >
-              <div
-                style={{
-                  width: 38,
-                  height: 38,
-                  borderRadius: 10,
-                  background: T.white,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
-              >
-                <Icon size={17} color={T.green} />
-              </div>
-              <div style={{ flex: 1 }}>
+      <div style={{ padding: "18px 20px 32px", textAlign: "center" }}>
+        {NOTIFS.length === 0 ? (
+          <div style={{ padding: "40px 0" }}>
+            <Bell size={40} color={T.greenSoft} style={{ marginBottom: 12 }} />
+            <p style={{ fontSize: 14, color: T.inkSoft }}>
+              Aucune notification pour le moment.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {NOTIFS.map((n) => {
+              const Icon = n.icon;
+              return (
                 <div
+                  key={n.id}
                   style={{
-                    fontSize: 13.5,
-                    fontWeight: n.read ? 600 : 700,
-                    color: T.ink,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 12,
+                    padding: "14px 16px",
+                    borderRadius: 14,
+                    background: n.read ? T.white : T.greenSoft,
+                    border: `1px solid ${T.border}`,
                   }}
                 >
-                  {n.title}
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      background: T.white,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Icon size={17} color={T.green} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: n.read ? 600 : 700,
+                        color: T.ink,
+                      }}
+                    >
+                      {n.title}
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}
+                    >
+                      {n.time}
+                    </div>
+                  </div>
+                  {!n.read && (
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        background: T.gold,
+                        marginTop: 4,
+                      }}
+                    />
+                  )}
                 </div>
-                <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}>
-                  {n.time}
-                </div>
-              </div>
-              {!n.read && (
-                <div
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    background: T.gold,
-                    marginTop: 4,
-                  }}
-                />
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
 /* ============================================================
    PROFILE
    ============================================================ */
