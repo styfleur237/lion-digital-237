@@ -1,4 +1,6 @@
-const API_BASE = "/api";
+const API_BASE =
+  process.env.REACT_APP_API_URL ||
+  "https://lion-digital-237-app.onrender.com/api";
 
 const api = {
   async request(endpoint, options = {}) {

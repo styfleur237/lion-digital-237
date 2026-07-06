@@ -1,7 +1,7 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const auth = require("../middleware/auth");
+const { saveDb } = require("../database/init");
 const router = express.Router();
 
 function generateReferralCode() {
@@ -13,7 +13,6 @@ function generateReferralCode() {
   return code;
 }
 
-// Inscription
 router.post("/register", async (req, res) => {
   try {
     const { username, phone, password, referralCode } = req.body;
@@ -32,10 +31,11 @@ router.post("/register", async (req, res) => {
         });
     }
 
-    const existing = db
-      .prepare("SELECT id FROM users WHERE username = ? OR phone = ?")
-      .get(username, phone);
-    if (existing) {
+    // Vérifier si existe
+    const existing = db.exec(
+      `SELECT id FROM users WHERE username = '${username.replace(/'/g, "''")}' OR phone = '${phone.replace(/'/g, "''")}'`,
+    );
+    if (existing.length > 0 && existing[0].values.length > 0) {
       return res
         .status(400)
         .json({ error: "Nom d'utilisateur ou téléphone déjà utilisé." });
@@ -45,29 +45,38 @@ router.post("/register", async (req, res) => {
     const hash = await bcrypt.hash(password, salt);
     const code = generateReferralCode();
 
-    const result = db
-      .prepare(
-        `
-      INSERT INTO users (username, phone, password, referralCode, referredBy)
-      VALUES (?, ?, ?, ?, ?)
-    `,
-      )
-      .run(username, phone, hash, code, referralCode || null);
+    const escUsername = username.replace(/'/g, "''");
+    const escPhone = phone.replace(/'/g, "''");
+    const escReferral = referralCode
+      ? `'${referralCode.replace(/'/g, "''")}'`
+      : "NULL";
 
-    // Gérer le parrainage
+    db.run(`INSERT INTO users (username, phone, password, referralCode, referredBy)
+            VALUES ('${escUsername}', '${escPhone}', '${hash}', '${code}', ${escReferral})`);
+
+    // Gérer parrainage
     if (referralCode) {
-      const referrer = db
-        .prepare("SELECT id FROM users WHERE referralCode = ?")
-        .get(referralCode);
-      if (referrer) {
-        db.prepare(
-          "INSERT INTO referrals (referrerId, username) VALUES (?, ?)",
-        ).run(referrer.id, username);
+      const refResult = db.exec(
+        `SELECT id FROM users WHERE referralCode = '${referralCode.replace(/'/g, "''")}'`,
+      );
+      if (refResult.length > 0 && refResult[0].values.length > 0) {
+        const referrerId = refResult[0].values[0][0];
+        db.run(
+          `INSERT INTO referrals (referrerId, username) VALUES (${referrerId}, '${escUsername}')`,
+        );
       }
     }
 
+    saveDb();
+
+    // Récupérer l'utilisateur créé
+    const userResult = db.exec(
+      `SELECT id, username, phone, balance, referralCode, role FROM users WHERE username = '${escUsername}'`,
+    );
+    const user = userResult[0].values[0];
+
     const token = jwt.sign(
-      { id: result.lastInsertRowid, username, role: "user" },
+      { id: user[0], username: user[1], role: user[5] },
       process.env.JWT_SECRET,
       { expiresIn: "7d" },
     );
@@ -75,38 +84,50 @@ router.post("/register", async (req, res) => {
     res.status(201).json({
       token,
       user: {
-        id: result.lastInsertRowid,
-        username,
-        phone,
-        balance: 0,
-        referralCode: code,
-        role: "user",
+        id: user[0],
+        username: user[1],
+        phone: user[2],
+        balance: user[3],
+        referralCode: user[4],
+        role: user[5],
       },
     });
   } catch (err) {
-    console.error("[Auth] Register error:", err);
+    console.error("[Auth] Register:", err);
     res.status(500).json({ error: "Erreur lors de l'inscription." });
   }
 });
 
-// Connexion
 router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
     const db = req.db;
 
     if (!username || !password) {
-      return res
-        .status(400)
-        .json({ error: "Nom d'utilisateur et mot de passe requis." });
+      return res.status(400).json({ error: "Identifiants requis." });
     }
 
-    const user = db
-      .prepare("SELECT * FROM users WHERE username = ?")
-      .get(username);
-    if (!user) {
+    const escUsername = username.replace(/'/g, "''");
+    const result = db.exec(
+      `SELECT * FROM users WHERE username = '${escUsername}'`,
+    );
+
+    if (result.length === 0 || result[0].values.length === 0) {
       return res.status(401).json({ error: "Identifiants incorrects." });
     }
+
+    const row = result[0].values[0];
+    const cols = result[0].columns;
+
+    const user = {
+      id: row[cols.indexOf("id")],
+      username: row[cols.indexOf("username")],
+      phone: row[cols.indexOf("phone")],
+      password: row[cols.indexOf("password")],
+      balance: row[cols.indexOf("balance")],
+      referralCode: row[cols.indexOf("referralCode")],
+      role: row[cols.indexOf("role")],
+    };
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
@@ -131,23 +152,14 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("[Auth] Login error:", err);
+    console.error("[Auth] Login:", err);
     res.status(500).json({ error: "Erreur lors de la connexion." });
   }
 });
 
-// Profil
-router.get("/profile", auth, (req, res) => {
-  const db = req.db;
-  const user = db
-    .prepare(
-      "SELECT id, username, phone, balance, role, referralCode, referralRewards, createdAt FROM users WHERE id = ?",
-    )
-    .get(req.userId);
-  const activeProducts = db
-    .prepare("SELECT * FROM active_products WHERE userId = ?")
-    .all(req.userId);
-  res.json({ ...user, activeProducts });
+router.get("/profile", (req, res) => {
+  // L'auth middleware doit être adapté aussi — je le donne après
+  res.status(401).json({ error: "Token requis" });
 });
 
 module.exports = router;

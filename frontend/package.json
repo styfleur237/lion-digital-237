@@ -2,7 +2,6 @@
   "name": "lion-digital-237-frontend",
   "version": "1.0.0",
   "private": true,
-  "proxy": "http://localhost:5000",
   "dependencies": {
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",

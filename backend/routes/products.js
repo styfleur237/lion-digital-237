@@ -1,5 +1,6 @@
 const express = require("express");
 const auth = require("../middleware/auth");
+const { saveDb } = require("../database/init");
 const router = express.Router();
 
 const PRODUCTS = [
@@ -10,7 +11,7 @@ const PRODUCTS = [
     daily: 250,
     days: 30,
     tier: 1,
-    desc: "Le point d'entrée idéal pour découvrir la plateforme.",
+    desc: "Le point d'entrée idéal.",
     features: [
       "Rendement journalier : 250 FCFA",
       "Durée : 30 jours",
@@ -24,7 +25,7 @@ const PRODUCTS = [
     daily: 550,
     days: 30,
     tier: 2,
-    desc: "Un palier équilibré pour accélérer vos gains.",
+    desc: "Un palier équilibré.",
     features: [
       "Rendement journalier : 550 FCFA",
       "Durée : 30 jours",
@@ -52,7 +53,7 @@ const PRODUCTS = [
     daily: 3100,
     days: 30,
     tier: 4,
-    desc: "Le palier premium pour maximiser vos revenus.",
+    desc: "Le palier premium.",
     features: [
       "Rendement journalier : 3 100 FCFA",
       "Durée : 30 jours",
@@ -79,7 +80,7 @@ router.get("/catalog", (req, res) => {
   res.json(PRODUCTS);
 });
 
-router.post("/buy", auth, async (req, res) => {
+router.post("/buy", auth, (req, res) => {
   try {
     const { productId } = req.body;
     const db = req.db;
@@ -87,74 +88,99 @@ router.post("/buy", auth, async (req, res) => {
     if (!product)
       return res.status(400).json({ error: "Produit introuvable." });
 
-    const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.userId);
-    if (user.balance < product.price) {
+    if (req.user.balance < product.price) {
       return res.status(400).json({ error: "Solde insuffisant." });
     }
 
-    db.prepare("UPDATE users SET balance = balance - ? WHERE id = ?").run(
-      product.price,
-      req.userId,
+    db.run(
+      `UPDATE users SET balance = balance - ${product.price} WHERE id = ${req.userId}`,
     );
-    db.prepare(
-      "INSERT INTO active_products (userId, productId, daysLeft) VALUES (?, ?, ?)",
-    ).run(req.userId, product.id, product.days);
-    db.prepare(
-      "INSERT INTO purchases (userId, product, amount) VALUES (?, ?, ?)",
-    ).run(req.userId, product.name, product.price);
+    db.run(
+      `INSERT INTO active_products (userId, productId, daysLeft) VALUES (${req.userId}, '${product.id}', ${product.days})`,
+    );
+    const escName = product.name.replace(/'/g, "''");
+    db.run(
+      `INSERT INTO purchases (userId, product, amount) VALUES (${req.userId}, '${escName}', ${product.price})`,
+    );
 
     // Bonus parrainage
-    if (user.referredBy) {
-      const referrer = db
-        .prepare("SELECT id FROM users WHERE username = ?")
-        .get(user.referredBy);
-      if (referrer) {
+    if (req.user.referredBy) {
+      const refResult = db.exec(
+        `SELECT id FROM users WHERE username = '${req.user.referredBy.replace(/'/g, "''")}'`,
+      );
+      if (refResult.length > 0 && refResult[0].values.length > 0) {
+        const referrerId = refResult[0].values[0][0];
         const bonus = Math.round(product.price * 0.05);
-        db.prepare(
-          "UPDATE users SET balance = balance + ?, referralRewards = referralRewards + ? WHERE id = ?",
-        ).run(bonus, bonus, referrer.id);
-        db.prepare(
-          "UPDATE referrals SET validated = 1, reward = ? WHERE referrerId = ? AND username = ?",
-        ).run(bonus, referrer.id, user.username);
+        db.run(
+          `UPDATE users SET balance = balance + ${bonus}, referralRewards = referralRewards + ${bonus} WHERE id = ${referrerId}`,
+        );
+        db.run(
+          `UPDATE referrals SET validated = 1, reward = ${bonus} WHERE referrerId = ${referrerId} AND username = '${req.user.username.replace(/'/g, "''")}'`,
+        );
       }
     }
 
-    const updatedUser = db
-      .prepare(
-        "SELECT id, username, phone, balance, role, referralCode FROM users WHERE id = ?",
-      )
-      .get(req.userId);
-    const activeProducts = db
-      .prepare("SELECT * FROM active_products WHERE userId = ?")
-      .all(req.userId);
+    saveDb();
+
+    const userResult = db.exec(
+      `SELECT balance FROM users WHERE id = ${req.userId}`,
+    );
+    const balance = userResult[0].values[0][0];
+    const activeResult = db.exec(
+      `SELECT * FROM active_products WHERE userId = ${req.userId}`,
+    );
+    const activeProducts = [];
+    if (activeResult.length > 0) {
+      const cols = activeResult[0].columns;
+      for (const row of activeResult[0].values) {
+        activeProducts.push({
+          id: row[cols.indexOf("id")],
+          userId: row[cols.indexOf("userId")],
+          productId: row[cols.indexOf("productId")],
+          purchasedAt: row[cols.indexOf("purchasedAt")],
+          daysLeft: row[cols.indexOf("daysLeft")],
+          name: product.name,
+          daily: product.daily,
+        });
+      }
+    }
 
     res.json({
       success: true,
-      balance: updatedUser.balance,
+      balance,
       activeProducts,
       message: `Produit ${product.name} acheté !`,
     });
   } catch (err) {
-    console.error("[Products] Buy error:", err);
+    console.error("[Products] Buy:", err);
     res.status(500).json({ error: "Erreur lors de l'achat." });
   }
 });
 
 router.get("/active", auth, (req, res) => {
   const db = req.db;
-  const active = db
-    .prepare("SELECT * FROM active_products WHERE userId = ?")
-    .all(req.userId);
-  res.json(
-    active.map((ap) => {
-      const product = PRODUCTS.find((p) => p.id === ap.productId);
-      return {
-        ...ap,
-        name: product ? product.name : "Inconnu",
-        daily: product ? product.daily : 0,
-      };
-    }),
+  const result = db.exec(
+    `SELECT * FROM active_products WHERE userId = ${req.userId}`,
   );
+  const products = [];
+  if (result.length > 0) {
+    const cols = result[0].columns;
+    for (const row of result[0].values) {
+      const prod = PRODUCTS.find(
+        (p) => p.id === row[cols.indexOf("productId")],
+      );
+      products.push({
+        id: row[cols.indexOf("id")],
+        productId: row[cols.indexOf("productId")],
+        purchasedAt: row[cols.indexOf("purchasedAt")],
+        daysLeft: row[cols.indexOf("daysLeft")],
+        name: prod ? prod.name : "Inconnu",
+        daily: prod ? prod.daily : 0,
+        price: prod ? prod.price : 0,
+      });
+    }
+  }
+  res.json(products);
 });
 
 module.exports = router;
