@@ -35,23 +35,7 @@ import {
 import api from "./api";
 
 /* ============================================================
-   DESIGN TOKENS — Lion Digital 237
-   ============================================================ */
-const T = {
-  green: "#0A8F3D",
-  greenDark: "#076B2E",
-  greenSoft: "#E6F4EA",
-  gold: "#D4AF37",
-  goldSoft: "#FBF3DD",
-  white: "#FFFFFF",
-  grayBg: "#F5F5F5",
-  ink: "#16241B",
-  inkSoft: "#5B6B61",
-  danger: "#C0392B",
-  border: "#E4E9E4",
-};
-/* ============================================================
-   CONFIGURATION MARCHANDE — Modifie ici tes numéros
+   CONFIGURATION MARCHANDE
    ============================================================ */
 const MERCHANT = {
   mtn: {
@@ -67,8 +51,26 @@ const MERCHANT = {
     bgSoft: "#FFF0E6",
   },
 };
+
 /* ============================================================
-   MOCK DATA
+   DESIGN TOKENS
+   ============================================================ */
+const T = {
+  green: "#0A8F3D",
+  greenDark: "#076B2E",
+  greenSoft: "#E6F4EA",
+  gold: "#D4AF37",
+  goldSoft: "#FBF3DD",
+  white: "#FFFFFF",
+  grayBg: "#F5F5F5",
+  ink: "#16241B",
+  inkSoft: "#5B6B61",
+  danger: "#C0392B",
+  border: "#E4E9E4",
+};
+
+/* ============================================================
+   PRODUITS
    ============================================================ */
 const PRODUCTS = [
   {
@@ -78,7 +80,7 @@ const PRODUCTS = [
     daily: 250,
     days: 30,
     tier: 1,
-    desc: "Le point d'entrée idéal pour découvrir la plateforme et générer vos premiers revenus.",
+    desc: "Le point d'entrée idéal pour découvrir la plateforme.",
     features: [
       "Rendement journalier : 250 FCFA",
       "Durée : 30 jours",
@@ -92,7 +94,7 @@ const PRODUCTS = [
     daily: 550,
     days: 30,
     tier: 2,
-    desc: "Un palier équilibré pour les utilisateurs qui veulent accélérer leurs gains.",
+    desc: "Un palier équilibré pour accélérer vos gains.",
     features: [
       "Rendement journalier : 550 FCFA",
       "Durée : 30 jours",
@@ -106,7 +108,7 @@ const PRODUCTS = [
     daily: 1450,
     days: 30,
     tier: 3,
-    desc: "Pensé pour les investisseurs réguliers cherchant un rendement supérieur.",
+    desc: "Pour les investisseurs réguliers.",
     features: [
       "Rendement journalier : 1 450 FCFA",
       "Durée : 30 jours",
@@ -120,7 +122,7 @@ const PRODUCTS = [
     daily: 3100,
     days: 30,
     tier: 4,
-    desc: "Le palier premium pour maximiser vos revenus passifs au quotidien.",
+    desc: "Le palier premium pour maximiser vos revenus.",
     features: [
       "Rendement journalier : 3 100 FCFA",
       "Durée : 30 jours",
@@ -134,7 +136,7 @@ const PRODUCTS = [
     daily: 6800,
     days: 30,
     tier: 5,
-    desc: "Notre offre la plus exclusive, réservée aux membres les plus engagés.",
+    desc: "Notre offre la plus exclusive.",
     features: [
       "Rendement journalier : 6 800 FCFA",
       "Durée : 30 jours",
@@ -155,7 +157,7 @@ const NEWS = [
   {
     id: 2,
     title: "Nouveau produit disponible",
-    body: "Le palier Platine est maintenant ouvert à tous les membres.",
+    body: "Le palier Platine est maintenant ouvert.",
     tag: "Produit",
   },
   {
@@ -165,6 +167,7 @@ const NEWS = [
     tag: "Info",
   },
 ];
+
 const NOTIFS = [];
 
 const REWARDS = [];
@@ -186,7 +189,31 @@ function todayStr() {
 }
 
 /* ============================================================
-   GLOBAL APP STATE — version avec API backend
+   GLOBAL STYLES
+   ============================================================ */
+const styleTagId = "lion-digital-keyframes";
+if (typeof document !== "undefined" && !document.getElementById(styleTagId)) {
+  const tag = document.createElement("style");
+  tag.id = styleTagId;
+  tag.innerHTML = `
+    @keyframes lionFadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes lionSpinner {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #0A8F3D; outline-offset: 2px; }
+    .lion-loader { display: flex; align-items: center; justify-content: center; padding: 40px 0; }
+    .lion-loader div { width: 32px; height: 32px; border-radius: 50%; border: 3px solid #E4E9E4; border-top-color: #0A8F3D; animation: lionSpinner 0.7s linear infinite; }
+  `;
+  document.head.appendChild(tag);
+}
+
+/* ============================================================
+   GLOBAL STATE
    ============================================================ */
 function useAppState() {
   const [screen, setScreen] = useState("welcome");
@@ -194,6 +221,7 @@ function useAppState() {
   const [subScreen, setSubScreen] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const [auth, setAuth] = useState(null);
   const [toast, setToast] = useState(null);
@@ -247,7 +275,6 @@ function useAppState() {
     [tab, subScreen],
   );
 
-  // ===== CHARGER LES DONNÉES AU DÉMARRAGE =====
   const loadUserData = useCallback(async () => {
     try {
       const profile = await api.getProfile();
@@ -259,18 +286,18 @@ function useAppState() {
         role: profile.role,
       });
     } catch (err) {
-      console.error("Erreur chargement profil:", err);
+      console.error("Profil:", err);
     }
   }, []);
 
   const loadHistory = useCallback(async () => {
     try {
-      const historyData = await api.getHistory();
-      setDeposits(historyData.deposits || []);
-      setWithdrawals(historyData.withdrawals || []);
-      setPurchases(historyData.purchases || []);
+      const data = await api.getHistory();
+      setDeposits(data.deposits || []);
+      setWithdrawals(data.withdrawals || []);
+      setPurchases(data.purchases || []);
     } catch (err) {
-      console.error("Erreur chargement historique:", err);
+      console.error("Historique:", err);
     }
   }, []);
 
@@ -279,11 +306,10 @@ function useAppState() {
       const stats = await api.getReferralStats();
       setReferralStats(stats);
     } catch (err) {
-      console.error("Erreur chargement parrainage:", err);
+      console.error("Parrainage:", err);
     }
   }, []);
 
-  // ===== AUTH =====
   const register = useCallback(
     async (username, phone, password) => {
       setLoading(true);
@@ -294,7 +320,7 @@ function useAppState() {
         setBalance(data.user.balance);
         setScreen("app");
         setTab("home");
-        showToast(`Bienvenue ${username} ! Compte créé avec succès.`);
+        showToast(`Bienvenue ${username} !`);
         await loadHistory();
         await loadReferralStats();
       } catch (err) {
@@ -344,7 +370,6 @@ function useAppState() {
     showToast("Déconnexion réussie.");
   }, [showToast]);
 
-  // ===== WALLET =====
   const makeDeposit = useCallback(
     async (amount, method) => {
       try {
@@ -381,7 +406,6 @@ function useAppState() {
     [showToast],
   );
 
-  // ===== PRODUCTS =====
   const buyProduct = useCallback(
     async (product) => {
       try {
@@ -390,14 +414,14 @@ function useAppState() {
         setActiveProducts(data.activeProducts || []);
         setPurchases((p) => [
           {
-            id: Math.random().toString(36).slice(2),
+            id: uid(),
             date: todayStr(),
             product: product.name,
             amount: product.price,
           },
           ...p,
         ]);
-        showToast(`Produit ${product.name} acheté avec succès !`);
+        showToast(`Produit ${product.name} acheté !`);
         return true;
       } catch (err) {
         showToast(err.message, "error");
@@ -407,7 +431,6 @@ function useAppState() {
     [showToast],
   );
 
-  // ===== VÉRIFIER LE TOKEN AU CHARGEMENT =====
   useEffect(() => {
     const token = localStorage.getItem("lionToken");
     if (token) {
@@ -420,8 +443,12 @@ function useAppState() {
         } catch (err) {
           localStorage.removeItem("lionToken");
           setScreen("welcome");
+        } finally {
+          setInitialLoading(false);
         }
       })();
+    } else {
+      setInitialLoading(false);
     }
   }, []);
 
@@ -436,6 +463,7 @@ function useAppState() {
     goBack,
     openSub,
     loading,
+    initialLoading,
     auth,
     register,
     login,
@@ -456,26 +484,26 @@ function useAppState() {
     loadHistory,
     loadReferralStats,
   };
-  const logout = useCallback(() => {
-    localStorage.removeItem("lionToken");
-    setAuth(null);
-    setScreen("welcome");
-    setTab("home");
-    setSubScreen(null);
-    setHistory([]);
-    setBalance(0);
-    setActiveProducts([]);
-    setDeposits([]);
-    setWithdrawals([]);
-    setPurchases([]);
-    NOTIFS.length = 0; // ← AJOUTE CETTE LIGNE
-    REWARDS.length = 0; // ← ET CELLE-CI
-    showToast("Déconnexion réussie.");
-  }, [showToast]);
 }
 
 /* ============================================================
-   SHARED UI ATOMS
+   LOADER
+   ============================================================ */
+function Loader({ text }) {
+  return (
+    <div style={{ textAlign: "center", padding: "40px 20px" }}>
+      <div className="lion-loader">
+        <div></div>
+      </div>
+      {text && (
+        <p style={{ fontSize: 13, color: T.inkSoft, marginTop: 12 }}>{text}</p>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   SHARED COMPONENTS
    ============================================================ */
 function LionMark({ size = 56 }) {
   return (
@@ -489,7 +517,6 @@ function LionMark({ size = 56 }) {
         alignItems: "center",
         justifyContent: "center",
         boxShadow: `0 8px 24px -8px rgba(10,143,61,0.55)`,
-        position: "relative",
         flexShrink: 0,
       }}
     >
@@ -543,14 +570,8 @@ function PrimaryButton({
             : variant === "gold"
               ? "0 10px 20px -8px rgba(212,175,55,0.55)"
               : "none",
-        transition: "transform 0.15s ease, box-shadow 0.15s ease",
+        transition: "transform 0.15s ease",
         ...style,
-      }}
-      onMouseDown={(e) => {
-        if (!disabled) e.currentTarget.style.transform = "scale(0.98)";
-      }}
-      onMouseUp={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
       }}
     >
       {children}
@@ -658,13 +679,12 @@ function PasswordField({ label, value, onChange, placeholder }) {
   );
 }
 
-function ScreenShell({ children, bg = T.grayBg }) {
+function ScreenShell({ children }) {
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: bg,
-        fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+        background: T.grayBg,
         display: "flex",
         justifyContent: "center",
       }}
@@ -762,82 +782,229 @@ function Toast({ toast }) {
   );
 }
 
+function StatCard({ icon: Icon, label, value, accent }) {
+  return (
+    <div
+      style={{
+        flex: 1,
+        background: T.white,
+        borderRadius: 16,
+        padding: "16px 14px",
+        border: `1px solid ${T.border}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          background: accent + "1A",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: accent,
+        }}
+      >
+        <Icon size={18} />
+      </div>
+      <div>
+        <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 600 }}>
+          {label}
+        </div>
+        <div
+          style={{ fontSize: 16, fontWeight: 800, color: T.ink, marginTop: 2 }}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CopyRow({ value, label }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+    } catch (e) {}
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: T.inkSoft,
+          marginBottom: 6,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          background: T.grayBg,
+          borderRadius: 12,
+          padding: "12px 14px",
+        }}
+      >
+        <span
+          style={{
+            flex: 1,
+            fontSize: 13.5,
+            fontWeight: 700,
+            color: T.ink,
+            wordBreak: "break-all",
+          }}
+        >
+          {value}
+        </span>
+        <button
+          onClick={doCopy}
+          style={{
+            background: copied ? T.green : T.white,
+            border: `1.5px solid ${T.green}`,
+            borderRadius: 9,
+            width: 36,
+            height: 36,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            color: copied ? T.white : T.green,
+            flexShrink: 0,
+          }}
+        >
+          {copied ? <Check size={16} /> : <Copy size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProfileRow({ icon: Icon, label, value, onClick, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 14,
+        padding: "15px 4px",
+        background: "none",
+        border: "none",
+        borderBottom: `1px solid ${T.border}`,
+        cursor: "pointer",
+        textAlign: "left",
+      }}
+    >
+      <div
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 10,
+          background: danger ? "#FDECEA" : T.greenSoft,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Icon size={17} color={danger ? T.danger : T.green} />
+      </div>
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            color: danger ? T.danger : T.ink,
+          }}
+        >
+          {label}
+        </div>
+        {value && (
+          <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 1 }}>
+            {value}
+          </div>
+        )}
+      </div>
+      {!danger && <ChevronRight size={18} color={T.inkSoft} />}
+    </button>
+  );
+}
+
 /* ============================================================
    WELCOME SCREEN
    ============================================================ */
 function WelcomeScreen({ state }) {
   return (
-    <ScreenShell bg={T.green}>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 32px",
+        background: `radial-gradient(circle at 50% 0%, ${T.greenDark} 0%, ${T.green} 55%)`,
+      }}
+    >
       <div
         style={{
-          minHeight: "100vh",
+          flex: 1,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          padding: "40px 32px",
-          background: `radial-gradient(circle at 50% 0%, ${T.greenDark} 0%, ${T.green} 55%)`,
+          gap: 22,
         }}
       >
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 22,
-          }}
-        >
-          <LionMark size={92} />
-          <div style={{ textAlign: "center" }}>
-            <h1
-              style={{
-                color: T.white,
-                fontSize: 26,
-                fontWeight: 800,
-                margin: 0,
-                letterSpacing: 0.2,
-              }}
-            >
-              Lion Digital <span style={{ color: T.gold }}>237</span>
-            </h1>
-            <p
-              style={{
-                color: "rgba(255,255,255,0.82)",
-                fontSize: 14,
-                marginTop: 8,
-                fontWeight: 500,
-              }}
-            >
-              La plateforme numérique du Cameroun
-            </p>
-          </div>
-        </div>
-        <div
-          style={{
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            paddingBottom: 8,
-          }}
-        >
-          <PrimaryButton
-            variant="gold"
-            onClick={() => state.setScreen("login")}
+        <LionMark size={92} />
+        <div style={{ textAlign: "center" }}>
+          <h1
+            style={{ color: T.white, fontSize: 26, fontWeight: 800, margin: 0 }}
           >
-            Se connecter
-          </PrimaryButton>
-          <PrimaryButton
-            variant="white"
-            onClick={() => state.setScreen("register")}
+            Lion Digital <span style={{ color: T.gold }}>237</span>
+          </h1>
+          <p
+            style={{
+              color: "rgba(255,255,255,0.82)",
+              fontSize: 14,
+              marginTop: 8,
+              fontWeight: 500,
+            }}
           >
-            S'inscrire
-          </PrimaryButton>
+            Plateforme d'investissement responsable
+          </p>
         </div>
       </div>
-    </ScreenShell>
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          paddingBottom: 8,
+        }}
+      >
+        <PrimaryButton variant="gold" onClick={() => state.setScreen("login")}>
+          Se connecter
+        </PrimaryButton>
+        <PrimaryButton
+          variant="white"
+          onClick={() => state.setScreen("register")}
+        >
+          S'inscrire
+        </PrimaryButton>
+      </div>
+    </div>
   );
 }
 
@@ -892,7 +1059,6 @@ function RegisterScreen({ state }) {
         <p style={{ fontSize: 14, color: T.inkSoft, marginBottom: 24 }}>
           Rejoignez la plateforme en quelques secondes.
         </p>
-
         <TextField
           label="Nom d'utilisateur"
           placeholder="Ex : jeanc237"
@@ -924,7 +1090,6 @@ function RegisterScreen({ state }) {
           onChange={(e) => setPwd2(e.target.value)}
           placeholder="Répétez le mot de passe"
         />
-
         <label
           style={{
             display: "flex",
@@ -950,10 +1115,9 @@ function RegisterScreen({ state }) {
             <span style={{ color: T.green, fontWeight: 700 }}>
               Conditions Générales
             </span>{" "}
-            d'utilisation de Lion Digital 237
+            d'utilisation
           </span>
         </label>
-
         {error && (
           <p
             style={{
@@ -966,13 +1130,11 @@ function RegisterScreen({ state }) {
             {error}
           </p>
         )}
-
         <div style={{ marginTop: 18 }}>
           <PrimaryButton type="submit" disabled={state.loading}>
             {state.loading ? "Inscription..." : "S'inscrire"}
           </PrimaryButton>
         </div>
-
         <p
           style={{
             textAlign: "center",
@@ -1005,7 +1167,7 @@ function LoginScreen({ state }) {
   const submit = async (e) => {
     e.preventDefault();
     if (!username || !pwd) {
-      setError("Veuillez entrer votre nom d'utilisateur et mot de passe.");
+      setError("Veuillez entrer vos identifiants.");
       return;
     }
     setError("");
@@ -1051,13 +1213,12 @@ function LoginScreen({ state }) {
             textAlign: "center",
           }}
         >
-          Connectez-vous pour accéder à votre compte.
+          Connectez-vous à votre compte.
         </p>
-
         <form onSubmit={submit} style={{ flex: 1 }}>
           <TextField
             label="Nom d'utilisateur"
-            placeholder="Votre nom d'utilisateur"
+            placeholder="Votre identifiant"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
@@ -1067,7 +1228,6 @@ function LoginScreen({ state }) {
             onChange={(e) => setPwd(e.target.value)}
             placeholder="Votre mot de passe"
           />
-
           {error && (
             <p
               style={{
@@ -1080,7 +1240,6 @@ function LoginScreen({ state }) {
               {error}
             </p>
           )}
-
           <p
             style={{
               textAlign: "right",
@@ -1093,12 +1252,10 @@ function LoginScreen({ state }) {
           >
             Mot de passe oublié ?
           </p>
-
           <PrimaryButton type="submit" disabled={state.loading}>
             {state.loading ? "Connexion..." : "Connexion"}
           </PrimaryButton>
         </form>
-
         <p
           style={{
             textAlign: "center",
@@ -1121,7 +1278,7 @@ function LoginScreen({ state }) {
 }
 
 /* ============================================================
-   MAIN APP SHELL
+   NAVIGATION & SHELL
    ============================================================ */
 const NAV_ITEMS = [
   { key: "home", label: "Accueil", icon: Home },
@@ -1133,6 +1290,7 @@ const NAV_ITEMS = [
 
 function MainApp({ state }) {
   const { tab, subScreen } = state;
+  const showBottomNav = !subScreen;
 
   let content = null;
   if (subScreen === "deposit") content = <DepositScreen state={state} />;
@@ -1151,14 +1309,47 @@ function MainApp({ state }) {
   else if (tab === "referral") content = <ReferralScreen state={state} />;
   else if (tab === "profile") content = <ProfileScreen state={state} />;
 
-  const showBottomNav = !subScreen;
-
   return (
     <ScreenShell>
       <div
         style={{ paddingBottom: showBottomNav ? 78 : 0, minHeight: "100vh" }}
       >
-        {content}
+        <div
+          key={tab + (subScreen ? JSON.stringify(subScreen) : "")}
+          style={{ animation: "lionFadeUp 0.25s ease" }}
+        >
+          {content}
+        </div>
+        {!subScreen && (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "16px 20px",
+              fontSize: 11.5,
+              color: T.inkSoft,
+              borderTop: `1px solid ${T.border}`,
+              marginTop: 8,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                gap: 6,
+                marginBottom: 4,
+              }}
+            >
+              <LionMark size={16} />
+              <span style={{ fontWeight: 700, color: T.green }}>
+                Lion Digital 237
+              </span>
+            </div>
+            <p style={{ marginBottom: 4 }}>
+              Plateforme d'investissement responsable
+            </p>
+            <p>&copy; {new Date().getFullYear()} Lion Digital 237.</p>
+          </div>
+        )}
       </div>
       <Toast toast={state.toast} />
       {showBottomNav && (
@@ -1179,88 +1370,45 @@ function MainApp({ state }) {
             boxShadow: "0 -8px 24px -16px rgba(0,0,0,0.15)",
           }}
         >
-          {NAV_ITEMS.map(({ key, label, icon: Icon }) => {
-            const active = tab === key;
-            return (
-              <button
-                key={key}
-                onClick={() => {
-                  state.setSubScreen(null);
-                  state.setTab(key);
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "4px 10px",
-                  color: active ? T.green : T.inkSoft,
-                  flex: 1,
-                }}
+          {NAV_ITEMS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => {
+                state.setSubScreen(null);
+                state.setTab(key);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 10px",
+                color: tab === key ? T.green : T.inkSoft,
+                flex: 1,
+              }}
+            >
+              <Icon size={22} strokeWidth={tab === key ? 2.4 : 2} />
+              <span
+                style={{ fontSize: 11, fontWeight: tab === key ? 700 : 500 }}
               >
-                <Icon size={22} strokeWidth={active ? 2.4 : 2} />
-                <span style={{ fontSize: 11, fontWeight: active ? 700 : 500 }}>
-                  {label}
-                </span>
-              </button>
-            );
-          })}
+                {label}
+              </span>
+            </button>
+          ))}
         </div>
       )}
     </ScreenShell>
   );
 }
 
-// ============================================================
-// HOME SCREEN
-// ============================================================
-function StatCard({ icon: Icon, label, value, accent }) {
-  return (
-    <div
-      style={{
-        flex: 1,
-        background: T.white,
-        borderRadius: 16,
-        padding: "16px 14px",
-        border: `1px solid ${T.border}`,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-      }}
-    >
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          background: accent + "1A",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: accent,
-        }}
-      >
-        <Icon size={18} />
-      </div>
-      <div>
-        <div style={{ fontSize: 12.5, color: T.inkSoft, fontWeight: 600 }}>
-          {label}
-        </div>
-        <div
-          style={{ fontSize: 16, fontWeight: 800, color: T.ink, marginTop: 2 }}
-        >
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
-
+/* ============================================================
+   HOME SCREEN
+   ============================================================ */
 function HomeScreen({ state }) {
-  const username = state.auth?.username || "Utilisateur";
+  const username = state.auth?.username || "Cher visiteur";
   return (
     <div>
       <div
@@ -1292,7 +1440,7 @@ function HomeScreen({ state }) {
                 Lion Digital 237
               </div>
               <div style={{ color: T.white, fontSize: 16, fontWeight: 700 }}>
-                Bonjour {username} 👋
+                Bonjour {username}
               </div>
             </div>
           </div>
@@ -1309,26 +1457,11 @@ function HomeScreen({ state }) {
               justifyContent: "center",
               cursor: "pointer",
               color: T.white,
-              position: "relative",
             }}
           >
             <Bell size={19} />
-            {NOTIFS.some((n) => !n.read) && (
-              <span
-                style={{
-                  position: "absolute",
-                  top: 7,
-                  right: 8,
-                  width: 8,
-                  height: 8,
-                  borderRadius: 4,
-                  background: T.gold,
-                }}
-              />
-            )}
           </button>
         </div>
-
         <div
           style={{
             background: "rgba(255,255,255,0.12)",
@@ -1391,7 +1524,6 @@ function HomeScreen({ state }) {
           </div>
         </div>
       </div>
-
       <div style={{ padding: "20px 20px 8px", display: "flex", gap: 12 }}>
         <StatCard
           icon={Package}
@@ -1410,17 +1542,43 @@ function HomeScreen({ state }) {
         <StatCard
           icon={Gift}
           label="Récompenses"
-          value={formatFCFA(REWARDS.reduce((s, r) => s + r.amount, 0))}
+          value={formatFCFA(state.referralStats.rewards)}
           accent={T.green}
         />
         <StatCard
           icon={TrendingUp}
-          label="Solde principal"
+          label="Portefeuille"
           value={formatFCFA(state.balance)}
           accent={T.gold}
         />
       </div>
-
+      {state.activeProducts.length === 0 && (
+        <div
+          style={{
+            background: T.grayBg,
+            borderRadius: 16,
+            padding: "24px 20px",
+            textAlign: "center",
+            margin: "0 20px 16px",
+          }}
+        >
+          <Package size={36} color={T.greenSoft} style={{ marginBottom: 10 }} />
+          <p style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.5 }}>
+            Vous n'avez pas encore de produits actifs.
+            <br />
+            <span
+              onClick={() => {
+                state.setSubScreen(null);
+                state.setTab("products");
+              }}
+              style={{ color: T.green, fontWeight: 700, cursor: "pointer" }}
+            >
+              Investissez maintenant
+            </span>{" "}
+            et commencez à gagner !
+          </p>
+        </div>
+      )}
       <div style={{ padding: "16px 20px 4px" }}>
         <h3
           style={{
@@ -1490,7 +1648,6 @@ function HomeScreen({ state }) {
           ))}
         </div>
       </div>
-
       <div style={{ padding: "20px 20px 28px" }}>
         <h3
           style={{
@@ -1550,95 +1707,9 @@ function HomeScreen({ state }) {
   );
 }
 
-// ============================================================
-// PRODUCTS SCREEN
-// ============================================================
-function ProductCard({ product, onOpen }) {
-  const Icon = TIER_ICON[product.tier] || Package;
-  return (
-    <div
-      onClick={onOpen}
-      style={{
-        background: T.white,
-        border: `1px solid ${T.border}`,
-        borderRadius: 18,
-        padding: 16,
-        cursor: "pointer",
-        display: "flex",
-        flexDirection: "column",
-        gap: 12,
-      }}
-    >
-      <div
-        style={{
-          height: 84,
-          borderRadius: 14,
-          background: `linear-gradient(135deg, ${T.greenSoft}, ${T.goldSoft})`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Icon size={34} color={T.green} />
-      </div>
-      <div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "baseline",
-          }}
-        >
-          <span style={{ fontSize: 15.5, fontWeight: 800, color: T.ink }}>
-            {product.name}
-          </span>
-          <span
-            style={{
-              fontSize: 10.5,
-              fontWeight: 700,
-              color: T.gold,
-              background: T.goldSoft,
-              padding: "2px 8px",
-              borderRadius: 8,
-            }}
-          >
-            Palier {product.tier}
-          </span>
-        </div>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: T.green,
-            marginTop: 4,
-          }}
-        >
-          {formatFCFA(product.price)}
-        </div>
-        <div
-          style={{
-            fontSize: 12,
-            color: T.inkSoft,
-            marginTop: 4,
-            lineHeight: 1.4,
-          }}
-        >
-          {product.desc}
-        </div>
-      </div>
-      <PrimaryButton
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen();
-        }}
-        style={{ padding: "10px 0", fontSize: 13.5 }}
-      >
-        Acheter
-      </PrimaryButton>
-    </div>
-  );
-}
-
+/* ============================================================
+   PRODUCTS SCREEN
+   ============================================================ */
 function ProductsScreen({ state }) {
   return (
     <div>
@@ -1651,13 +1722,96 @@ function ProductsScreen({ state }) {
           gap: 14,
         }}
       >
-        {PRODUCTS.map((p) => (
-          <ProductCard
-            key={p.id}
-            product={p}
-            onOpen={() => state.openSub({ type: "product-detail", product: p })}
-          />
-        ))}
+        {PRODUCTS.map((p) => {
+          const Icon = TIER_ICON[p.tier] || Package;
+          return (
+            <div
+              key={p.id}
+              onClick={() =>
+                state.openSub({ type: "product-detail", product: p })
+              }
+              style={{
+                background: T.white,
+                border: `1px solid ${T.border}`,
+                borderRadius: 18,
+                padding: 16,
+                cursor: "pointer",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  height: 84,
+                  borderRadius: 14,
+                  background: `linear-gradient(135deg, ${T.greenSoft}, ${T.goldSoft})`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Icon size={34} color={T.green} />
+              </div>
+              <div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                  }}
+                >
+                  <span
+                    style={{ fontSize: 15.5, fontWeight: 800, color: T.ink }}
+                  >
+                    {p.name}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      color: T.gold,
+                      background: T.goldSoft,
+                      padding: "2px 8px",
+                      borderRadius: 8,
+                    }}
+                  >
+                    Palier {p.tier}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: T.green,
+                    marginTop: 4,
+                  }}
+                >
+                  {formatFCFA(p.price)}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: T.inkSoft,
+                    marginTop: 4,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {p.desc}
+                </div>
+              </div>
+              <PrimaryButton
+                onClick={(e) => {
+                  e.stopPropagation();
+                  state.openSub({ type: "product-detail", product: p });
+                }}
+                style={{ padding: "10px 0", fontSize: 13.5 }}
+              >
+                Acheter
+              </PrimaryButton>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1750,25 +1904,24 @@ function ProductDetailScreen({ state, product }) {
           >
             Caractéristiques
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {product.features.map((f, i) => (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 13,
-                  color: T.inkSoft,
-                }}
-              >
-                <Check size={15} color={T.green} /> {f}
-              </div>
-            ))}
-          </div>
+          {product.features.map((f, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: T.inkSoft,
+                marginBottom: 6,
+              }}
+            >
+              <Check size={15} color={T.green} /> {f}
+            </div>
+          ))}
         </div>
         <PrimaryButton onClick={handleBuy} disabled={state.loading}>
-          {state.loading ? "Achat en cours..." : "Acheter maintenant"}
+          {state.loading ? "Achat..." : "Acheter maintenant"}
         </PrimaryButton>
         <p
           style={{
@@ -1778,16 +1931,16 @@ function ProductDetailScreen({ state, product }) {
             marginTop: 12,
           }}
         >
-          Solde disponible : {formatFCFA(state.balance)}
+          Solde : {formatFCFA(state.balance)}
         </p>
       </div>
     </div>
   );
 }
 
-// ============================================================
-// WALLET SCREEN
-// ============================================================
+/* ============================================================
+   WALLET SCREEN
+   ============================================================ */
 function WalletScreen({ state }) {
   return (
     <div>
@@ -1899,6 +2052,18 @@ function WalletScreen({ state }) {
             marginBottom: 24,
           }}
         >
+          {state.activeProducts.length === 0 && (
+            <p
+              style={{
+                fontSize: 13,
+                color: T.inkSoft,
+                textAlign: "center",
+                padding: 20,
+              }}
+            >
+              Aucun produit actif.
+            </p>
+          )}
           {state.activeProducts.map((ap) => {
             const p = PRODUCTS.find((x) => x.id === ap.productId);
             if (!p) return null;
@@ -1961,18 +2126,15 @@ function WalletScreen({ state }) {
             cursor: "pointer",
           }}
         >
-          Voir tout l'historique
+          Voir l'historique
         </button>
       </div>
     </div>
   );
 }
 
-// ============================================================
-// DEPOSIT SCREEN
-// ============================================================
 /* ============================================================
-   DEPOSIT SCREEN — Avec vrais numéros marchands
+   DEPOSIT SCREEN
    ============================================================ */
 function DepositScreen({ state }) {
   const [method, setMethod] = useState("mtn");
@@ -1980,12 +2142,8 @@ function DepositScreen({ state }) {
   const [number, setNumber] = useState("");
 
   const submit = async () => {
-    if (!amount || amount < 500) {
+    if (!amount || number < 500) {
       state.showToast("Montant minimum : 500 FCFA", "error");
-      return;
-    }
-    if (!number) {
-      state.showToast("Veuillez entrer votre numéro de paiement", "error");
       return;
     }
     const ok = await state.makeDeposit(amount, MERCHANT[method].name);
@@ -2001,7 +2159,6 @@ function DepositScreen({ state }) {
     <div>
       <TopBar title="Recharger mon compte" onBack={state.goBack} />
       <div style={{ padding: "18px 20px 32px" }}>
-        {/* Sélection méthode */}
         <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
           {Object.entries(MERCHANT).map(([key, m]) => (
             <button
@@ -2026,13 +2183,10 @@ function DepositScreen({ state }) {
                 gap: 8,
               }}
             >
-              <Smartphone size={16} color={m.color} />
-              {m.name}
+              <Smartphone size={16} color={m.color} /> {m.name}
             </button>
           ))}
         </div>
-
-        {/* Carte marchande avec le vrai numéro */}
         <div
           style={{
             background: `linear-gradient(135deg, ${current.bgSoft}, ${T.white})`,
@@ -2094,8 +2248,6 @@ function DepositScreen({ state }) {
             {current.name}
           </div>
         </div>
-
-        {/* Instructions */}
         <div
           style={{
             background: T.grayBg,
@@ -2109,7 +2261,7 @@ function DepositScreen({ state }) {
         >
           <strong style={{ color: T.ink }}>Comment faire ?</strong>
           <br />
-          1. Ouvre ton application {current.name}
+          1. Ouvre l'application {current.name}
           <br />
           2. Envoie le montant au <strong>{current.number}</strong>
           <br />
@@ -2117,7 +2269,6 @@ function DepositScreen({ state }) {
           <br />
           4. Clique sur "Effectuer le dépôt"
         </div>
-
         <TextField
           label="Votre numéro de paiement"
           placeholder="Ex : 654157406"
@@ -2132,7 +2283,6 @@ function DepositScreen({ state }) {
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
-
         <div
           style={{
             display: "flex",
@@ -2161,14 +2311,9 @@ function DepositScreen({ state }) {
             </button>
           ))}
         </div>
-
         <PrimaryButton onClick={submit} disabled={state.loading}>
-          {state.loading
-            ? "Traitement..."
-            : `Effectuer le dépôt via ${current.name}`}
+          {state.loading ? "Traitement..." : "Effectuer le dépôt"}
         </PrimaryButton>
-
-        {/* Historique des dépôts */}
         <div style={{ marginTop: 28 }}>
           <h3
             style={{
@@ -2233,9 +2378,9 @@ function DepositScreen({ state }) {
   );
 }
 
-// ============================================================
-// WITHDRAW SCREEN
-// ============================================================
+/* ============================================================
+   WITHDRAW SCREEN
+   ============================================================ */
 function WithdrawScreen({ state }) {
   const [method, setMethod] = useState("mtn");
   const [amount, setAmount] = useState("");
@@ -2345,1342 +2490,487 @@ function WithdrawScreen({ state }) {
           >
             Historique des retraits
           </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {state.withdrawals.map((w) => (
-              <div
-                key={w.id || w._id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  background: T.grayBg,
-                  borderRadius: 14,
-                  padding: "12px 16px",
-                }}
-              >
-                <div>
-                  <div
-                    style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}
-                  >
-                    {formatFCFA(w.amount)}
-                  </div>
-                  <div style={{ fontSize: 12, color: T.inkSoft }}>
-                    {new Date(w.date).toLocaleDateString("fr-FR")} · {w.method}
-                  </div>
-                </div>
-                <span
-                  style={{
-                    fontSize: 11.5,
-                    fontWeight: 700,
-                    color: w.status === "Traité" ? T.green : T.gold,
-                    background:
-                      w.status === "Traité" ? T.greenSoft : T.goldSoft,
-                    padding: "4px 10px",
-                    borderRadius: 8,
-                  }}
-                >
-                  {w.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// REFERRAL SCREEN
-// ============================================================
-function CopyRow({ value, label }) {
-  const [copied, setCopied] = useState(false);
-  const doCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-    } catch (e) {}
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-  return (
-    <div style={{ marginBottom: 18 }}>
-      <div
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: T.inkSoft,
-          marginBottom: 6,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: T.grayBg,
-          borderRadius: 12,
-          padding: "12px 14px",
-        }}
-      >
-        <span
-          style={{
-            flex: 1,
-            fontSize: 13.5,
-            fontWeight: 700,
-            color: T.ink,
-            wordBreak: "break-all",
-          }}
-        >
-          {value}
-        </span>
-        <button
-          onClick={doCopy}
-          style={{
-            background: copied ? T.green : T.white,
-            border: `1.5px solid ${T.green}`,
-            borderRadius: 9,
-            width: 36,
-            height: 36,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            color: copied ? T.white : T.green,
-            flexShrink: 0,
-          }}
-        >
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ReferralScreen({ state }) {
-  return (
-    <div>
-      <TopBar title="Parrainage" />
-      <div style={{ padding: "18px 20px 32px" }}>
-        <div
-          style={{
-            background: `linear-gradient(135deg, ${T.gold}, #B8932A)`,
-            borderRadius: 20,
-            padding: "20px 18px",
-            marginBottom: 22,
-            textAlign: "center",
-          }}
-        >
-          <Users size={28} color={T.white} style={{ marginBottom: 8 }} />
-          <div style={{ color: T.white, fontSize: 14, fontWeight: 700 }}>
-            Invitez vos amis et gagnez des récompenses
-          </div>
-        </div>
-        <CopyRow label="Mon code" value={state.referralCode} />
-        <CopyRow label="Mon lien" value={state.referralLink} />
-        <h3
-          style={{
-            fontSize: 14,
-            fontWeight: 700,
-            color: T.ink,
-            margin: "8px 0 12px",
-          }}
-        >
-          Statistiques
-        </h3>
-        <div style={{ display: "flex", gap: 12 }}>
-          <StatCard
-            icon={Users}
-            label="Filleuls directs"
-            value={state.referralStats.direct}
-            accent={T.green}
-          />
-          <StatCard
-            icon={Check}
-            label="Achats validés"
-            value={state.referralStats.validated}
-            accent={T.gold}
-          />
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <StatCard
-            icon={Gift}
-            label="Récompenses obtenues"
-            value={formatFCFA(state.referralStats.rewards)}
-            accent={T.green}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================
-// REWARDS SCREEN
-// ============================================================
-function RewardsScreen({ state }) {
-  return (
-    <div>
-      <TopBar title="Mes récompenses" onBack={state.goBack} />
-      <div style={{ padding: "18px 20px 32px", textAlign: "center" }}>
-        {REWARDS.length === 0 ? (
-          <div style={{ padding: "40px 0" }}>
-            <Gift size={40} color={T.greenSoft} style={{ marginBottom: 12 }} />
-            <p style={{ fontSize: 14, color: T.inkSoft }}>
-              Aucune récompense pour le moment. Invitez des amis pour en gagner
-              !
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {REWARDS.map((r) => {
-              const Icon = r.icon;
-              return (
-                <div
-                  key={r.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    background: T.grayBg,
-                    borderRadius: 16,
-                    padding: "14px 16px",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      background: T.goldSoft,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Icon size={20} color={T.gold} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{ fontSize: 14, fontWeight: 700, color: T.ink }}
-                    >
-                      {r.title}
-                    </div>
-                    <div
-                      style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}
-                    >
-                      {r.status}
-                    </div>
-                  </div>
-                  <div
-                    style={{ fontSize: 14, fontWeight: 800, color: T.green }}
-                  >
-                    +{formatFCFA(r.amount)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   HISTORY (global, tabbed)
-   ============================================================ */
-function HistoryScreen({ state }) {
-  const [sub, setSub] = useState("deposits");
-  const tabs = [
-    { key: "deposits", label: "Dépôts" },
-    { key: "withdrawals", label: "Retraits" },
-    { key: "purchases", label: "Achats" },
-  ];
-  return (
-    <div>
-      <TopBar title="Toutes les opérations" onBack={state.goBack} />
-      <div style={{ padding: "16px 20px 0", display: "flex", gap: 8 }}>
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setSub(t.key)}
-            style={{
-              flex: 1,
-              padding: "10px 0",
-              borderRadius: 12,
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-              border: sub === t.key ? "none" : `1.5px solid ${T.border}`,
-              background: sub === t.key ? T.green : T.white,
-              color: sub === t.key ? T.white : T.ink,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      <div
-        style={{
-          padding: "18px 20px 32px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {sub === "deposits" &&
-          state.deposits.map((d) => (
-            <div
-              key={d.id || d._id}
+          {state.withdrawals.length === 0 && (
+            <p
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                background: T.grayBg,
-                borderRadius: 14,
-                padding: "12px 16px",
+                fontSize: 13,
+                color: T.inkSoft,
+                textAlign: "center",
+                padding: 16,
               }}
             >
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>
-                  {new Date(d.date).toLocaleDateString("fr-FR")}
-                </div>
-                <div style={{ fontSize: 12, color: T.inkSoft }}>{d.method}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{ fontWeight: 800, fontSize: 13.5, color: T.green }}
-                >
-                  +{formatFCFA(d.amount)}
-                </div>
-                <div style={{ fontSize: 11.5, color: T.inkSoft }}>
-                  {d.status}
-                </div>
-              </div>
-            </div>
-          ))}
-        {sub === "withdrawals" &&
-          state.withdrawals.map((w) => (
+              Aucun retrait pour le moment.
+            </p>
+          )}
+          {state.withdrawals.map((w) => (
             <div
               key={w.id || w._id}
               style={{
                 display: "flex",
                 justifyContent: "space-between",
+                alignItems: "center",
                 background: T.grayBg,
                 borderRadius: 14,
                 padding: "12px 16px",
+                marginBottom: 8,
               }}
             >
               <div>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>
-                  {new Date(w.date).toLocaleDateString("fr-FR")}
-                </div>
-                <div style={{ fontSize: 12, color: T.inkSoft }}>{w.method}</div>
-              </div>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{ fontWeight: 800, fontSize: 13.5, color: T.danger }}
-                >
-                  -{formatFCFA(w.amount)}
-                </div>
-                <div style={{ fontSize: 11.5, color: T.inkSoft }}>
-                  {w.status}
-                </div>
-              </div>
-            </div>
-          ))}
-        {sub === "purchases" &&
-          state.purchases.map((p) => (
-            <div
-              key={p.id || p._id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                background: T.grayBg,
-                borderRadius: 14,
-                padding: "12px 16px",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: T.ink }}>
-                  {p.product}
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>
+                  {formatFCFA(w.amount)}
                 </div>
                 <div style={{ fontSize: 12, color: T.inkSoft }}>
-                  {new Date(p.date).toLocaleDateString("fr-FR")}
+                  {new Date(w.date).toLocaleDateString("fr-FR")} · {w.method}
                 </div>
               </div>
-              <div style={{ fontWeight: 800, fontSize: 13.5, color: T.ink }}>
-                {formatFCFA(p.amount)}
-              </div>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: w.status === "approuvé" ? T.green : T.danger,
+                  background: w.status === "approuvé" ? T.greenSoft : "#FDE8E8",
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                }}
+              >
+                {w.status}
+              </span>
             </div>
           ))}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   NOTIFICATIONS
-   ============================================================ */
-function NotificationsScreen({ state }) {
-  return (
-    <div>
-      <TopBar title="Notifications" onBack={state.goBack} />
-      <div style={{ padding: "18px 20px 32px", textAlign: "center" }}>
-        {NOTIFS.length === 0 ? (
-          <div style={{ padding: "40px 0" }}>
-            <Bell size={40} color={T.greenSoft} style={{ marginBottom: 12 }} />
-            <p style={{ fontSize: 14, color: T.inkSoft }}>
-              Aucune notification pour le moment.
-            </p>
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {NOTIFS.map((n) => {
-              const Icon = n.icon;
-              return (
-                <div
-                  key={n.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 12,
-                    padding: "14px 16px",
-                    borderRadius: 14,
-                    background: n.read ? T.white : T.greenSoft,
-                    border: `1px solid ${T.border}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 10,
-                      background: T.white,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Icon size={17} color={T.green} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: n.read ? 600 : 700,
-                        color: T.ink,
-                      }}
-                    >
-                      {n.title}
-                    </div>
-                    <div
-                      style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}
-                    >
-                      {n.time}
-                    </div>
-                  </div>
-                  {!n.read && (
-                    <div
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        background: T.gold,
-                        marginTop: 4,
-                      }}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-/* ============================================================
-   PROFILE
-   ============================================================ */
-function ProfileRow({ icon: Icon, label, value, onClick, danger }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        gap: 14,
-        padding: "15px 4px",
-        background: "none",
-        border: "none",
-        borderBottom: `1px solid ${T.border}`,
-        cursor: "pointer",
-        textAlign: "left",
-      }}
-    >
-      <div
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 10,
-          background: danger ? "#FDECEA" : T.greenSoft,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Icon size={17} color={danger ? T.danger : T.green} />
-      </div>
-      <div style={{ flex: 1 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 600,
-            color: danger ? T.danger : T.ink,
-          }}
-        >
-          {label}
         </div>
-        {value && (
-          <div style={{ fontSize: 12.5, color: T.inkSoft, marginTop: 1 }}>
-            {value}
-          </div>
-        )}
       </div>
-      {!danger && <ChevronRight size={18} color={T.inkSoft} />}
-    </button>
+    </div>
   );
 }
 
-function ProfileScreen({ state }) {
-  const username = state.auth?.username || "Utilisateur";
-  const phone = state.auth?.phone || "+237 6XX XXX XXX";
+/* ============================================================
+   REFERRAL SCREEN
+   ============================================================ */
+function ReferralScreen({ state }) {
+  const [copied, setCopied] = useState(false);
+  const link = `https://liondigital237.com/ref/${state.referralStats.referralCode}`;
+
+  const copyLink = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div>
-      <TopBar title="Profil" />
+      <TopBar title="Programme de parrainage" />
       <div style={{ padding: "18px 20px 32px" }}>
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            marginBottom: 26,
+            background: `linear-gradient(135deg, ${T.goldSoft}, ${T.white})`,
+            borderRadius: 18,
+            padding: "20px",
+            marginBottom: 20,
+            border: `1.5px solid ${T.gold}33`,
+            textAlign: "center",
+          }}
+        >
+          <Gift size={34} color={T.gold} />
+          <h2
+            style={{
+              fontSize: 17,
+              fontWeight: 800,
+              color: T.ink,
+              margin: "10px 0 4px",
+            }}
+          >
+            Gagnez plus avec le parrainage
+          </h2>
+          <p style={{ fontSize: 13, color: T.inkSoft, lineHeight: 1.5 }}>
+            Parrainez vos proches et recevez 10 % des revenus de vos filleuls
+            directs !
+          </p>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          {[
+            { label: "Filleuls directs", value: state.referralStats.direct },
+            { label: "Validés", value: state.referralStats.validated },
+            { label: "Gagné", value: formatFCFA(state.referralStats.rewards) },
+          ].map((s) => (
+            <div
+              key={s.label}
+              style={{
+                background: T.grayBg,
+                borderRadius: 14,
+                padding: "14px 8px",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 15, fontWeight: 800, color: T.green }}>
+                {s.value}
+              </div>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: T.inkSoft,
+                  fontWeight: 600,
+                  marginTop: 2,
+                }}
+              >
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div
+          style={{
+            background: T.grayBg,
+            borderRadius: 14,
+            padding: "14px 16px",
+            marginBottom: 20,
           }}
         >
           <div
             style={{
-              width: 80,
-              height: 80,
-              borderRadius: 24,
-              background: `linear-gradient(135deg, ${T.green}, ${T.greenDark})`,
+              fontSize: 13,
+              fontWeight: 700,
+              color: T.ink,
+              marginBottom: 8,
+            }}
+          >
+            Votre lien de parrainage
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              readOnly
+              value={link}
+              style={{
+                flex: 1,
+                padding: "11px 12px",
+                borderRadius: 10,
+                border: `1.5px solid ${T.border}`,
+                fontSize: 13,
+                color: T.inkSoft,
+                outline: "none",
+                background: T.white,
+              }}
+            />
+            <button
+              onClick={copyLink}
+              style={{
+                background: T.green,
+                border: "none",
+                borderRadius: 10,
+                padding: "0 14px",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                color: T.white,
+              }}
+            >
+              {copied ? <Check size={18} /> : <Copy size={18} />}
+            </button>
+          </div>
+          {copied && (
+            <p
+              style={{
+                fontSize: 12,
+                color: T.green,
+                fontWeight: 600,
+                marginTop: 6,
+                textAlign: "center",
+              }}
+            >
+              ✓ Lien copié !
+            </p>
+          )}
+        </div>
+        <div>
+          <h3
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: T.ink,
+              margin: "0 0 12px",
+            }}
+          >
+            Mes filleuls
+          </h3>
+          {state.referralStats.referrals.length === 0 && (
+            <p
+              style={{
+                fontSize: 13,
+                color: T.inkSoft,
+                textAlign: "center",
+                padding: 16,
+              }}
+            >
+              Vous n'avez pas encore de filleul. Partagez votre lien !
+            </p>
+          )}
+          {state.referralStats.referrals.map((r) => (
+            <div
+              key={r.id || r._id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: T.grayBg,
+                borderRadius: 14,
+                padding: "12px 16px",
+                marginBottom: 8,
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>
+                  {r.username || r.phone}
+                </div>
+                <div style={{ fontSize: 12, color: T.inkSoft }}>
+                  Inscrit le {new Date(r.joinedAt).toLocaleDateString("fr-FR")}
+                </div>
+              </div>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  color: r.active ? T.green : T.inkSoft,
+                  background: r.active ? T.greenSoft : T.grayBg,
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                }}
+              >
+                {r.active ? "Actif" : "Inactif"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   PROFILE SCREEN
+   ============================================================ */
+function ProfileScreen({ state }) {
+  const [showLogoutPopup, setShowLogoutPopup] = useState(false);
+
+  return (
+    <div>
+      <TopBar title="Mon profil" />
+      <div style={{ padding: "18px 20px 32px" }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div
+            style={{
+              width: 70,
+              height: 70,
+              borderRadius: 20,
+              background: `linear-gradient(135deg, ${T.greenSoft}, ${T.goldSoft})`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              marginBottom: 12,
-              boxShadow: "0 10px 24px -10px rgba(10,143,61,0.5)",
+              margin: "0 auto 12px",
             }}
           >
-            <span style={{ color: T.white, fontSize: 28, fontWeight: 800 }}>
-              {username[0]?.toUpperCase()}
-            </span>
+            <User size={32} color={T.green} />
           </div>
           <div style={{ fontSize: 17, fontWeight: 800, color: T.ink }}>
-            {username}
+            {state.auth?.username || "Utilisateur"}
           </div>
-          <div style={{ fontSize: 13, color: T.inkSoft, marginTop: 2 }}>
-            Membre depuis le 12/06/2026
+          <div style={{ fontSize: 13.5, color: T.inkSoft }}>
+            {state.auth?.phone || ""}
           </div>
+          {state.auth?.role === "admin" && (
+            <div
+              style={{
+                fontSize: 11.5,
+                fontWeight: 700,
+                color: T.gold,
+                background: T.goldSoft,
+                padding: "3px 12px",
+                borderRadius: 10,
+                display: "inline-block",
+                marginTop: 6,
+              }}
+            >
+              Administrateur
+            </div>
+          )}
         </div>
-
         <div style={{ marginBottom: 24 }}>
-          <ProfileRow
-            icon={Phone}
-            label="Téléphone"
-            value={phone}
-            onClick={() => {}}
-          />
-          <ProfileRow
-            icon={Package}
-            label="Date d'inscription"
-            value="12/06/2026"
-            onClick={() => {}}
-          />
-          <ProfileRow
-            icon={Gift}
-            label="Mes récompenses"
-            onClick={() => state.openSub("rewards")}
-          />
-          <ProfileRow
-            icon={Bell}
-            label="Notifications"
-            onClick={() => state.openSub("notifications")}
-          />
-        </div>
-
-        <div style={{ marginBottom: 24 }}>
-          <ProfileRow
-            icon={ShieldCheck}
-            label="Modifier mot de passe"
-            onClick={() =>
-              state.showToast(
-                "Lien envoyé par SMS pour modifier le mot de passe.",
-              )
-            }
-          />
-          <ProfileRow
-            icon={Smartphone}
-            label="Modifier téléphone"
-            onClick={() =>
-              state.showToast(
-                "Vérification SMS requise pour modifier le téléphone.",
-              )
-            }
-          />
-          <ProfileRow
-            icon={MessageCircle}
-            label="Assistance"
-            onClick={() => state.openSub("support")}
-          />
-        </div>
-
-        {state.auth?.role === "admin" && (
-          <div style={{ marginBottom: 24 }}>
-            <ProfileRow
-              icon={Settings}
-              label="Espace Administration"
-              onClick={() => state.openSub("admin")}
-            />
-          </div>
-        )}
-
-        <ProfileRow
-          icon={LogOut}
-          label="Déconnexion"
-          onClick={state.logout}
-          danger
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   SUPPORT
-   ============================================================ */
-const FAQ = [
-  {
-    q: "Comment effectuer un dépôt ?",
-    a: "Rendez-vous dans Portefeuille > Dépôt, choisissez MTN ou Orange Money, puis suivez les instructions.",
-  },
-  {
-    q: "Combien de temps prend un retrait ?",
-    a: "Les retraits sont généralement traités sous 24h ouvrées.",
-  },
-  {
-    q: "Comment fonctionne le parrainage ?",
-    a: "Partagez votre code ou lien : vous gagnez une récompense à chaque achat validé de vos filleuls.",
-  },
-];
-
-function SupportScreen({ state }) {
-  const [openIdx, setOpenIdx] = useState(null);
-  return (
-    <div>
-      <TopBar title="Assistance" onBack={state.goBack} />
-      <div style={{ padding: "18px 20px 32px" }}>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            marginBottom: 26,
-          }}
-        >
           {[
             {
-              icon: MessageCircle,
-              label: "Chat en ligne",
-              sub: "Réponse en quelques minutes",
+              icon: Phone,
+              label: "Numéro de téléphone",
+              value: state.auth?.phone || "Non renseigné",
             },
-            { icon: Mail, label: "E-mail", sub: "support@liondigital237.com" },
-            { icon: Phone, label: "WhatsApp", sub: "+237 6XX XXX XXX" },
-          ].map(({ icon: Icon, label, sub }) => (
-            <button
-              key={label}
-              onClick={() => state.showToast(`Ouverture de ${label}...`)}
+            {
+              icon: Mail,
+              label: "Email",
+              value: state.auth?.email || "Non renseigné",
+            },
+            {
+              icon: Calendar,
+              label: "Membre depuis",
+              value: state.auth?.joinedAt
+                ? new Date(state.auth.joinedAt).toLocaleDateString("fr-FR")
+                : "—",
+            },
+          ].map((item) => (
+            <div
+              key={item.label}
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 14,
-                padding: "14px 16px",
+                gap: 12,
                 background: T.grayBg,
-                border: "none",
                 borderRadius: 14,
-                cursor: "pointer",
-                textAlign: "left",
+                padding: "14px 16px",
+                marginBottom: 8,
               }}
             >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 11,
-                  background: T.white,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Icon size={18} color={T.green} />
-              </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>
-                  {label}
+              <item.icon size={18} color={T.green} />
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}
+                >
+                  {item.label}
                 </div>
-                <div style={{ fontSize: 12, color: T.inkSoft }}>{sub}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>
+                  {item.value}
+                </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
-
-        <h3
+        {state.auth?.role === "admin" && (
+          <button
+            onClick={() => state.setSubScreen("admin")}
+            style={{
+              width: "100%",
+              background: T.goldSoft,
+              border: `1.5px solid ${T.gold}55`,
+              borderRadius: 14,
+              padding: "13px 0",
+              fontSize: 14,
+              fontWeight: 700,
+              color: T.gold,
+              cursor: "pointer",
+              marginBottom: 14,
+            }}
+          >
+            Panneau d'administration
+          </button>
+        )}
+        <button
+          onClick={() => setShowLogoutPopup(true)}
           style={{
+            width: "100%",
+            background: T.white,
+            border: `1.5px solid #E8D8D8`,
+            borderRadius: 14,
+            padding: "13px 0",
             fontSize: 14,
             fontWeight: 700,
-            color: T.ink,
-            margin: "0 0 12px",
+            color: T.danger,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
           }}
         >
-          FAQ
-        </h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {FAQ.map((f, i) => (
-            <div
-              key={i}
+          <LogOut size={17} /> Déconnexion
+        </button>
+      </div>
+
+      {showLogoutPopup && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              background: T.white,
+              borderRadius: 20,
+              padding: "28px 24px",
+              width: "85%",
+              maxWidth: 320,
+              textAlign: "center",
+            }}
+          >
+            <LogOut size={36} color={T.danger} style={{ marginBottom: 12 }} />
+            <h2
               style={{
-                border: `1px solid ${T.border}`,
-                borderRadius: 14,
-                overflow: "hidden",
+                fontSize: 17,
+                fontWeight: 800,
+                color: T.ink,
+                margin: "0 0 8px",
               }}
             >
+              Déconnexion
+            </h2>
+            <p
+              style={{
+                fontSize: 13.5,
+                color: T.inkSoft,
+                lineHeight: 1.5,
+                marginBottom: 20,
+              }}
+            >
+              Voulez-vous vraiment vous déconnecter ?
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
               <button
-                onClick={() => setOpenIdx(openIdx === i ? null : i)}
+                onClick={() => setShowLogoutPopup(false)}
                 style={{
-                  width: "100%",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "14px 16px",
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: `1.5px solid ${T.border}`,
                   background: T.white,
-                  border: "none",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: T.ink,
                   cursor: "pointer",
-                  textAlign: "left",
                 }}
               >
-                <span style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>
-                  {f.q}
-                </span>
-                <ChevronDown
-                  size={18}
-                  color={T.inkSoft}
-                  style={{
-                    transform: openIdx === i ? "rotate(180deg)" : "none",
-                    transition: "transform 0.2s",
-                  }}
-                />
+                Annuler
               </button>
-              {openIdx === i && (
-                <div
-                  style={{
-                    padding: "0 16px 14px",
-                    fontSize: 13,
-                    color: T.inkSoft,
-                    lineHeight: 1.5,
-                  }}
-                >
-                  {f.a}
-                </div>
-              )}
+              <button
+                onClick={() => {
+                  setShowLogoutPopup(false);
+                  state.logout();
+                }}
+                style={{
+                  flex: 1,
+                  padding: "12px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  background: T.danger,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: T.white,
+                  cursor: "pointer",
+                }}
+              >
+                Se déconnecter
+              </button>
             </div>
-          ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
-}
-
-/* ============================================================
-   ADMIN DASHBOARD
-   ============================================================ */
-/* ============================================================
-   ADMIN DASHBOARD — 100% FONCTIONNEL
-   ============================================================ */
-function AdminScreen({ state }) {
-  const [stats, setStats] = useState(null);
-  const [users, setUsers] = useState([]);
-  const [tab, setTab] = useState("dashboard");
-  const [loading, setLoading] = useState(false);
-
-  // Charger les stats
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await api.request("/admin/stats");
-        setStats(data);
-      } catch (err) {
-        state.showToast("Erreur chargement stats", "error");
-      }
-    })();
-  }, []);
-
-  // Charger les utilisateurs
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.request("/admin/users");
-      setUsers(data.users || []);
-    } catch (err) {
-      state.showToast("Erreur chargement utilisateurs", "error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (tab === "users") loadUsers();
-  }, [tab, loadUsers]);
-
-  // Traiter un retrait
-  const processWithdrawal = async (withdrawalId, status) => {
-    try {
-      await api.request(`/admin/withdraw/${withdrawalId}/process`, {
-        method: "POST",
-        body: JSON.stringify({ status }),
-      });
-      state.showToast(
-        `Retrait ${status === "Refusé" ? "refusé" : "traité"} avec succès.`,
-      );
-      // Recharger historique
-      await state.loadHistory();
-    } catch (err) {
-      state.showToast(err.message, "error");
-    }
-  };
-
-  // Récupérer les retraits en attente
-  const pendingWithdrawals = state.withdrawals.filter(
-    (w) => w.status === "En cours",
-  );
-
-  // Dashboard
-  if (tab === "dashboard") {
-    return (
-      <div>
-        <TopBar title="Administration" onBack={state.goBack} />
-        <div
-          style={{
-            padding: "18px 20px 16px",
-            display: "flex",
-            gap: 8,
-            borderBottom: `1px solid ${T.border}`,
-          }}
-        >
-          {[
-            { key: "dashboard", label: "Stats" },
-            { key: "users", label: "Utilisateurs" },
-            {
-              key: "withdrawals",
-              label: `Retraits (${pendingWithdrawals.length})`,
-            },
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                flex: 1,
-                padding: "10px 0",
-                borderRadius: 12,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                border: tab === t.key ? "none" : `1.5px solid ${T.border}`,
-                background: tab === t.key ? T.green : T.white,
-                color: tab === t.key ? T.white : T.ink,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ padding: "18px 20px 32px" }}>
-          <h3
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: T.ink,
-              margin: "0 0 14px",
-            }}
-          >
-            Statistiques de la plateforme
-          </h3>
-          {!stats ? (
-            <p style={{ color: T.inkSoft }}>Chargement...</p>
-          ) : (
-            <>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 12,
-                  marginBottom: 24,
-                }}
-              >
-                <div
-                  style={{
-                    background: T.greenSoft,
-                    borderRadius: 16,
-                    padding: "16px",
-                    textAlign: "center",
-                  }}
-                >
-                  <Users
-                    size={24}
-                    color={T.green}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <div style={{ fontSize: 22, fontWeight: 800, color: T.ink }}>
-                    {stats.totalUsers}
-                  </div>
-                  <div style={{ fontSize: 12, color: T.inkSoft }}>
-                    Utilisateurs
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: T.goldSoft,
-                    borderRadius: 16,
-                    padding: "16px",
-                    textAlign: "center",
-                  }}
-                >
-                  <Package
-                    size={24}
-                    color={T.gold}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <div style={{ fontSize: 22, fontWeight: 800, color: T.ink }}>
-                    {stats.activeProductCount}
-                  </div>
-                  <div style={{ fontSize: 12, color: T.inkSoft }}>
-                    Produits actifs
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: "#E6F4EA",
-                    borderRadius: 16,
-                    padding: "16px",
-                    textAlign: "center",
-                  }}
-                >
-                  <ArrowDownToLine
-                    size={24}
-                    color={T.green}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>
-                    {formatFCFA(stats.totalDeposits)}
-                  </div>
-                  <div style={{ fontSize: 12, color: T.inkSoft }}>
-                    Total dépôts
-                  </div>
-                </div>
-                <div
-                  style={{
-                    background: "#FDEAEA",
-                    borderRadius: 16,
-                    padding: "16px",
-                    textAlign: "center",
-                  }}
-                >
-                  <ArrowUpFromLine
-                    size={24}
-                    color={T.danger}
-                    style={{ marginBottom: 8 }}
-                  />
-                  <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>
-                    {formatFCFA(stats.totalWithdrawals)}
-                  </div>
-                  <div style={{ fontSize: 12, color: T.inkSoft }}>
-                    Total retraits
-                  </div>
-                </div>
-              </div>
-
-              <div
-                style={{
-                  background: T.grayBg,
-                  borderRadius: 16,
-                  padding: "16px 18px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 8,
-                  }}
-                >
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>
-                    Solde total plateforme
-                  </span>
-                  <span
-                    style={{ fontSize: 18, fontWeight: 800, color: T.green }}
-                  >
-                    {formatFCFA(stats.totalBalance)}
-                  </span>
-                </div>
-                <div style={{ fontSize: 11.5, color: T.inkSoft }}>
-                  Dernière mise à jour : {new Date().toLocaleString("fr-FR")}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Liste des utilisateurs
-  if (tab === "users") {
-    return (
-      <div>
-        <TopBar
-          title="Utilisateurs"
-          onBack={state.goBack}
-          right={
-            <button
-              onClick={loadUsers}
-              style={{
-                background: T.greenSoft,
-                border: "none",
-                borderRadius: 10,
-                width: 36,
-                height: 36,
-                cursor: "pointer",
-                color: T.green,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <polyline points="23 4 23 10 17 10" />
-                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-              </svg>
-            </button>
-          }
-        />
-        <div
-          style={{
-            padding: "0 20px 16px",
-            display: "flex",
-            gap: 8,
-            marginTop: 12,
-          }}
-        >
-          {[
-            { key: "dashboard", label: "Stats" },
-            { key: "users", label: "Utilisateurs" },
-            {
-              key: "withdrawals",
-              label: `Retraits (${pendingWithdrawals.length})`,
-            },
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                flex: 1,
-                padding: "10px 0",
-                borderRadius: 12,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                border: tab === t.key ? "none" : `1.5px solid ${T.border}`,
-                background: tab === t.key ? T.green : T.white,
-                color: tab === t.key ? T.white : T.ink,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ padding: "0 20px 32px" }}>
-          {loading ? (
-            <p style={{ color: T.inkSoft, textAlign: "center", padding: 20 }}>
-              Chargement...
-            </p>
-          ) : users.length === 0 ? (
-            <p style={{ color: T.inkSoft, textAlign: "center", padding: 20 }}>
-              Aucun utilisateur trouvé.
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {users.map((u) => (
-                <div
-                  key={u.id}
-                  style={{
-                    background: T.grayBg,
-                    borderRadius: 14,
-                    padding: "14px 16px",
-                    borderLeft: `4px solid ${u.role === "admin" ? T.gold : T.green}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{ fontSize: 14, fontWeight: 700, color: T.ink }}
-                      >
-                        {u.username}
-                        {u.role === "admin" && (
-                          <span
-                            style={{
-                              fontSize: 10,
-                              background: T.gold,
-                              color: T.ink,
-                              padding: "2px 6px",
-                              borderRadius: 6,
-                              marginLeft: 8,
-                            }}
-                          >
-                            Admin
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        style={{ fontSize: 12, color: T.inkSoft, marginTop: 3 }}
-                      >
-                        {u.phone} · Inscrit le{" "}
-                        {new Date(u.createdAt).toLocaleDateString("fr-FR")}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: T.green,
-                        }}
-                      >
-                        {formatFCFA(u.balance)}
-                      </div>
-                      <div style={{ fontSize: 11, color: T.inkSoft }}>
-                        Récompenses: {formatFCFA(u.referralRewards)}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  // Retraits en attente
-  if (tab === "withdrawals") {
-    return (
-      <div>
-        <TopBar title="Retraits en attente" onBack={state.goBack} />
-        <div
-          style={{
-            padding: "0 20px 16px",
-            display: "flex",
-            gap: 8,
-            marginTop: 12,
-          }}
-        >
-          {[
-            { key: "dashboard", label: "Stats" },
-            { key: "users", label: "Utilisateurs" },
-            {
-              key: "withdrawals",
-              label: `Retraits (${pendingWithdrawals.length})`,
-            },
-          ].map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              style={{
-                flex: 1,
-                padding: "10px 0",
-                borderRadius: 12,
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-                border: tab === t.key ? "none" : `1.5px solid ${T.border}`,
-                background: tab === t.key ? T.green : T.white,
-                color: tab === t.key ? T.white : T.ink,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ padding: "0 20px 32px" }}>
-          <h3
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: T.ink,
-              margin: "0 0 14px",
-            }}
-          >
-            Retraits en attente ({pendingWithdrawals.length})
-          </h3>
-          {pendingWithdrawals.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "40px 0" }}>
-              <Check size={40} color={T.green} style={{ marginBottom: 12 }} />
-              <p style={{ fontSize: 14, color: T.inkSoft }}>
-                Aucun retrait en attente de traitement.
-              </p>
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {pendingWithdrawals.map((w) => (
-                <div
-                  key={w.id}
-                  style={{
-                    background: T.grayBg,
-                    borderRadius: 14,
-                    padding: "14px 16px",
-                    borderLeft: `4px solid ${T.gold}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: 10,
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{ fontSize: 15, fontWeight: 800, color: T.ink }}
-                      >
-                        {formatFCFA(w.amount)}
-                      </div>
-                      <div
-                        style={{ fontSize: 12, color: T.inkSoft, marginTop: 2 }}
-                      >
-                        {w.method} · {new Date(w.date).toLocaleString("fr-FR")}
-                      </div>
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: T.gold,
-                        background: T.goldSoft,
-                        padding: "4px 10px",
-                        borderRadius: 8,
-                      }}
-                    >
-                      En attente
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 10 }}>
-                    <button
-                      onClick={() => processWithdrawal(w.id, "Traité")}
-                      style={{
-                        flex: 1,
-                        padding: "10px 0",
-                        borderRadius: 10,
-                        border: "none",
-                        background: T.green,
-                        color: T.white,
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Valider le retrait
-                    </button>
-                    <button
-                      onClick={() => processWithdrawal(w.id, "Refusé")}
-                      style={{
-                        flex: 1,
-                        padding: "10px 0",
-                        borderRadius: 10,
-                        border: `1.5px solid ${T.danger}`,
-                        background: T.white,
-                        color: T.danger,
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Refuser
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return null;
-}
-
-/* ============================================================
-   GLOBAL KEYFRAMES
-   ============================================================ */
-const styleTagId = "lion-digital-keyframes";
-if (typeof document !== "undefined" && !document.getElementById(styleTagId)) {
-  const tag = document.createElement("style");
-  tag.id = styleTagId;
-  tag.innerHTML = `
-    @keyframes lionFadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    * { box-sizing: border-box; }
-    button:focus-visible, input:focus-visible { outline: 2px solid #0A8F3D; outline-offset: 2px; }
-  `;
-  document.head.appendChild(tag);
-}
-
-/* ============================================================
-   EXPORT PRINCIPAL — TOUT À LA FIN
-   ============================================================ */
-export default function App() {
-  const state = useAppState();
-  if (state.screen === "welcome") return <WelcomeScreen state={state} />;
-  if (state.screen === "register") return <RegisterScreen state={state} />;
-  if (state.screen === "login") return <LoginScreen state={state} />;
-  return <MainApp state={state} />;
 }
