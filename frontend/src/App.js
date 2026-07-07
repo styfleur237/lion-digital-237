@@ -2802,50 +2802,16 @@ function ProfileScreen({ state }) {
           )}
         </div>
         <div style={{ marginBottom: 24 }}>
-          {[
-            {
-              icon: Phone,
-              label: "Numéro de téléphone",
-              value: state.auth?.phone || "Non renseigné",
-            },
-            {
-              icon: Mail,
-              label: "Email",
-              value: state.auth?.email || "Non renseigné",
-            },
-            {
-              icon: Calendar,
-              label: "Membre depuis",
-              value: state.auth?.joinedAt
-                ? new Date(state.auth.joinedAt).toLocaleDateString("fr-FR")
-                : "—",
-            },
-          ].map((item) => (
-            <div
-              key={item.label}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                background: T.grayBg,
-                borderRadius: 14,
-                padding: "14px 16px",
-                marginBottom: 8,
-              }}
-            >
-              <item.icon size={18} color={T.green} />
-              <div style={{ flex: 1 }}>
-                <div
-                  style={{ fontSize: 12, color: T.inkSoft, fontWeight: 600 }}
-                >
-                  {item.label}
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>
-                  {item.value}
-                </div>
-              </div>
-            </div>
-          ))}
+          <ProfileRow
+            icon={Phone}
+            label="Numéro de téléphone"
+            value={state.auth?.phone || "Non renseigné"}
+          />
+          <ProfileRow
+            icon={Mail}
+            label="Email"
+            value={state.auth?.email || "Non renseigné"}
+          />
         </div>
         {state.auth?.role === "admin" && (
           <button
@@ -2973,4 +2939,706 @@ function ProfileScreen({ state }) {
       )}
     </div>
   );
+}
+/* ============================================================
+   ADMIN SCREEN
+   ============================================================ */
+function AdminScreen({ state }) {
+  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.adminStats();
+        setStats(data.stats);
+        setUsers(data.users || []);
+      } catch (err) {
+        state.showToast("Erreur chargement admin", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleAction = async (userId, action) => {
+    setActionLoading(userId + action);
+    try {
+      const data = await api.adminAction(userId, action);
+      setUsers(data.users || []);
+      setStats(data.stats);
+      state.showToast(`Action "${action}" effectuée`);
+    } catch (err) {
+      state.showToast(err.message, "error");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  if (loading)
+    return (
+      <div>
+        <TopBar title="Administration" onBack={state.goBack} />
+        <Loader text="Chargement du panneau admin..." />
+      </div>
+    );
+
+  return (
+    <div>
+      <TopBar title="Administration" onBack={state.goBack} />
+      <div style={{ padding: "18px 20px 32px" }}>
+        <div
+          style={{
+            background: T.goldSoft,
+            borderRadius: 16,
+            padding: "16px 18px",
+            marginBottom: 20,
+            border: `1px solid ${T.gold}44`,
+          }}
+        >
+          <h3
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: T.ink,
+              margin: "0 0 12px",
+            }}
+          >
+            Aperçu de la plateforme
+          </h3>
+          {stats && (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  background: T.white,
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                }}
+              >
+                <div
+                  style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
+                >
+                  Utilisateurs
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>
+                  {stats.totalUsers}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: T.white,
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                }}
+              >
+                <div
+                  style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
+                >
+                  Dépôts totaux
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.green }}>
+                  {formatFCFA(stats.totalDeposits)}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: T.white,
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                }}
+              >
+                <div
+                  style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
+                >
+                  Retraits totaux
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>
+                  {formatFCFA(stats.totalWithdrawals)}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: T.white,
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                }}
+              >
+                <div
+                  style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
+                >
+                  Produits vendus
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.gold }}>
+                  {stats.totalPurchases}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <h3
+          style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: T.ink,
+            margin: "0 0 12px",
+          }}
+        >
+          Gestion des utilisateurs
+        </h3>
+
+        {users.length === 0 && (
+          <p
+            style={{
+              fontSize: 13,
+              color: T.inkSoft,
+              textAlign: "center",
+              padding: 20,
+            }}
+          >
+            Aucun utilisateur.
+          </p>
+        )}
+
+        {users.map((u) => (
+          <div
+            key={u.id}
+            style={{
+              background: T.grayBg,
+              borderRadius: 14,
+              padding: "14px 16px",
+              marginBottom: 10,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 8,
+              }}
+            >
+              <div>
+                <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>
+                  {u.username}
+                </span>
+                {u.role === "admin" && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: T.gold,
+                      background: T.goldSoft,
+                      padding: "2px 8px",
+                      borderRadius: 8,
+                      marginLeft: 8,
+                    }}
+                  >
+                    Admin
+                  </span>
+                )}
+              </div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: T.green }}>
+                {formatFCFA(u.balance)}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 10 }}>
+              {u.phone} · Inscrit le{" "}
+              {new Date(u.createdAt).toLocaleDateString("fr-FR")}
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {u.withdrawals &&
+                u.withdrawals.length > 0 &&
+                u.withdrawals.map(
+                  (w) =>
+                    w.status === "en attente" && (
+                      <div
+                        key={w.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          background: T.white,
+                          borderRadius: 10,
+                          padding: "8px 12px",
+                          fontSize: 12,
+                          color: T.inkSoft,
+                        }}
+                      >
+                        <ArrowUpFromLine size={14} color={T.gold} />
+                        <span>{formatFCFA(w.amount)}</span>
+                        <button
+                          onClick={() => handleAction(u.id, `approve-${w.id}`)}
+                          disabled={actionLoading === u.id + `approve-${w.id}`}
+                          style={{
+                            background: T.green,
+                            border: "none",
+                            borderRadius: 8,
+                            padding: "4px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: T.white,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Approuver
+                        </button>
+                        <button
+                          onClick={() => handleAction(u.id, `refuse-${w.id}`)}
+                          disabled={actionLoading === u.id + `refuse-${w.id}`}
+                          style={{
+                            background: T.danger,
+                            border: "none",
+                            borderRadius: 8,
+                            padding: "4px 10px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: T.white,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Refuser
+                        </button>
+                      </div>
+                    ),
+                )}
+              {(!u.withdrawals ||
+                u.withdrawals.filter((w) => w.status === "en attente")
+                  .length === 0) && (
+                <span style={{ fontSize: 11.5, color: T.inkSoft }}>
+                  Aucune demande en attente
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SETTINGS SCREEN (mini)
+   ============================================================ */
+function SettingsScreen({ state }) {
+  return (
+    <div>
+      <TopBar title="Paramètres" onBack={state.goBack} />
+      <div style={{ padding: "18px 20px" }}>
+        <ProfileRow icon={Settings} label="Langue" value="Français" />
+        <ProfileRow icon={Bell} label="Notifications" value="Activées" />
+        <ProfileRow icon={ShieldCheck} label="Sécurité" value="Mot de passe" />
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   NOTIFICATIONS SCREEN
+   ============================================================ */
+function NotificationsScreen({ state }) {
+  const notifs = NOTIFS || [];
+  return (
+    <div>
+      <TopBar title="Notifications" onBack={state.goBack} />
+      <div style={{ padding: "18px 20px 32px" }}>
+        {notifs.length === 0 && (
+          <div style={{ textAlign: "center", padding: "40px 20px" }}>
+            <Bell size={40} color={T.border} style={{ marginBottom: 12 }} />
+            <p style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6 }}>
+              Aucune notification pour le moment.
+              <br />
+              <span style={{ fontSize: 12.5, color: T.green }}>
+                Restez connecté, on vous informera ici
+              </span>
+            </p>
+          </div>
+        )}
+        {notifs.map((n) => (
+          <div
+            key={n.id}
+            style={{
+              background: T.grayBg,
+              borderRadius: 14,
+              padding: "14px 16px",
+              marginBottom: 8,
+              display: "flex",
+              gap: 12,
+            }}
+          >
+            <Bell
+              size={18}
+              color={T.green}
+              style={{ flexShrink: 0, marginTop: 2 }}
+            />
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>
+                {n.title}
+              </div>
+              <div
+                style={{
+                  fontSize: 12.5,
+                  color: T.inkSoft,
+                  lineHeight: 1.4,
+                  marginTop: 3,
+                }}
+              >
+                {n.body}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SUPPORT SCREEN
+   ============================================================ */
+function SupportScreen({ state }) {
+  return (
+    <div>
+      <TopBar title="Support client" onBack={state.goBack} />
+      <div style={{ padding: "18px 20px 32px" }}>
+        <div
+          style={{
+            background: T.greenSoft,
+            borderRadius: 16,
+            padding: "20px",
+            textAlign: "center",
+            marginBottom: 20,
+          }}
+        >
+          <MessageCircle
+            size={36}
+            color={T.green}
+            style={{ marginBottom: 10 }}
+          />
+          <p
+            style={{
+              fontSize: 13.5,
+              color: T.ink,
+              lineHeight: 1.6,
+              fontWeight: 600,
+            }}
+          >
+            Besoin d'aide ? Contactez-nous via WhatsApp au
+            <br />
+            <strong style={{ color: T.green, fontSize: 16 }}>
+              +237 654 157 406
+            </strong>
+          </p>
+        </div>
+        <ProfileRow
+          icon={Mail}
+          label="Email"
+          value="support@liondigital237.com"
+        />
+        <ProfileRow icon={Phone} label="Téléphone" value="+237 693 850 310" />
+        <ProfileRow
+          icon={MessageCircle}
+          label="WhatsApp"
+          value="+237 654 157 406"
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   REWARDS SCREEN
+   ============================================================ */
+function RewardsScreen({ state }) {
+  const rewards = REWARDS || [];
+  return (
+    <div>
+      <TopBar title="Récompenses" onBack={state.goBack} />
+      <div style={{ padding: "18px 20px 32px" }}>
+        {rewards.length === 0 && (
+          <div style={{ textAlign: "center", padding: "40px 20px" }}>
+            <Gift size={40} color={T.border} style={{ marginBottom: 12 }} />
+            <p style={{ fontSize: 14, color: T.inkSoft, lineHeight: 1.6 }}>
+              Aucune récompense pour le moment.
+              <br />
+              <span style={{ fontSize: 12.5, color: T.green }}>
+                Parrainez et investissez pour débloquer des bonus !
+              </span>
+            </p>
+          </div>
+        )}
+        {rewards.map((r) => (
+          <div
+            key={r.id}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              background: T.greenSoft,
+              borderRadius: 14,
+              padding: "12px 16px",
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>
+                {r.label}
+              </div>
+              <div style={{ fontSize: 12, color: T.inkSoft }}>
+                {new Date(r.date).toLocaleDateString("fr-FR")}
+              </div>
+            </div>
+            <span style={{ fontSize: 14, fontWeight: 800, color: T.green }}>
+              +{formatFCFA(r.amount)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   HISTORY SCREEN
+   ============================================================ */
+function HistoryScreen({ state }) {
+  const [tab, setTab] = useState("deposits");
+  return (
+    <div>
+      <TopBar title="Historique" onBack={state.goBack} />
+      <div
+        style={{
+          padding: "0 20px",
+          display: "flex",
+          gap: 0,
+          marginBottom: 8,
+          borderBottom: `1px solid ${T.border}`,
+        }}
+      >
+        {[
+          { key: "deposits", label: "Dépôts" },
+          { key: "withdrawals", label: "Retraits" },
+          { key: "purchases", label: "Achats" },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{
+              flex: 1,
+              padding: "14px 0",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              border: "none",
+              borderBottom:
+                tab === t.key
+                  ? `2.5px solid ${T.green}`
+                  : "2.5px solid transparent",
+              background: "none",
+              color: tab === t.key ? T.green : T.inkSoft,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ padding: "8px 20px 32px" }}>
+        {tab === "deposits" &&
+          (state.deposits.length === 0 ? (
+            <EmptyState
+              icon={ArrowDownToLine}
+              message="Aucun dépôt pour le moment. Effectuez votre premier dépôt !"
+            />
+          ) : (
+            state.deposits.map((d) => (
+              <div
+                key={d.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: T.grayBg,
+                  borderRadius: 14,
+                  padding: "12px 16px",
+                  marginBottom: 8,
+                }}
+              >
+                <div>
+                  <div
+                    style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}
+                  >
+                    {formatFCFA(d.amount)}
+                  </div>
+                  <div style={{ fontSize: 12, color: T.inkSoft }}>
+                    {new Date(d.date).toLocaleDateString("fr-FR")} · {d.method}
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color:
+                      d.status === "approuvé" || d.status === "validé"
+                        ? T.green
+                        : T.gold,
+                    background:
+                      d.status === "approuvé" || d.status === "validé"
+                        ? T.greenSoft
+                        : T.goldSoft,
+                    padding: "4px 10px",
+                    borderRadius: 8,
+                  }}
+                >
+                  {d.status}
+                </span>
+              </div>
+            ))
+          ))}
+        {tab === "withdrawals" &&
+          (state.withdrawals.length === 0 ? (
+            <EmptyState
+              icon={ArrowUpFromLine}
+              message="Aucun retrait pour le moment."
+            />
+          ) : (
+            state.withdrawals.map((w) => (
+              <div
+                key={w.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: T.grayBg,
+                  borderRadius: 14,
+                  padding: "12px 16px",
+                  marginBottom: 8,
+                }}
+              >
+                <div>
+                  <div
+                    style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}
+                  >
+                    {formatFCFA(w.amount)}
+                  </div>
+                  <div style={{ fontSize: 12, color: T.inkSoft }}>
+                    {new Date(w.date).toLocaleDateString("fr-FR")} · {w.method}
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    color:
+                      w.status === "approuvé"
+                        ? T.green
+                        : w.status === "refusé"
+                          ? T.danger
+                          : T.gold,
+                    background:
+                      w.status === "approuvé"
+                        ? T.greenSoft
+                        : w.status === "refusé"
+                          ? "#FDECEA"
+                          : T.goldSoft,
+                    padding: "4px 10px",
+                    borderRadius: 8,
+                  }}
+                >
+                  {w.status}
+                </span>
+              </div>
+            ))
+          ))}
+        {tab === "purchases" &&
+          (state.purchases.length === 0 ? (
+            <EmptyState
+              icon={Package}
+              message="Vous n'avez acheté aucun produit pour le moment."
+            />
+          ) : (
+            state.purchases.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  background: T.grayBg,
+                  borderRadius: 14,
+                  padding: "12px 16px",
+                  marginBottom: 8,
+                }}
+              >
+                <div>
+                  <div
+                    style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}
+                  >
+                    {p.product}
+                  </div>
+                  <div style={{ fontSize: 12, color: T.inkSoft }}>{p.date}</div>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.green }}>
+                  {formatFCFA(p.amount)}
+                </span>
+              </div>
+            ))
+          ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+function EmptyState({ icon: Icon, message }) {
+  return (
+    <div style={{ textAlign: "center", padding: "40px 20px" }}>
+      {Icon && <Icon size={38} color={T.border} style={{ marginBottom: 12 }} />}
+      <p style={{ fontSize: 13.5, color: T.inkSoft, lineHeight: 1.6 }}>
+        {message}
+      </p>
+    </div>
+  );
+}
+
+/* ============================================================
+   MAIN APP EXPORT
+   ============================================================ */
+export default function App() {
+  const state = useAppState();
+
+  if (state.initialLoading) {
+    return (
+      <ScreenShell>
+        <div
+          style={{
+            minHeight: "100vh",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <LionMark size={64} />
+            <Loader text="Lion Digital 237 se prépare..." />
+          </div>
+        </div>
+      </ScreenShell>
+    );
+  }
+
+  if (state.screen === "welcome") return <WelcomeScreen state={state} />;
+  if (state.screen === "login") return <LoginScreen state={state} />;
+  if (state.screen === "register") return <RegisterScreen state={state} />;
+  if (state.screen === "app") return <MainApp state={state} />;
+
+  return <WelcomeScreen state={state} />;
 }
