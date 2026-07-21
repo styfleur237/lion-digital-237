@@ -41,11 +41,16 @@ const api = {
 
   getProfile: () => api.request("/auth/profile"),
   getBalance: () => api.request("/wallet/balance"),
-
-  deposit: (amount, method) =>
+  deposit: (amount, method, phone) =>
     api.request("/wallet/deposit", {
       method: "POST",
-      body: JSON.stringify({ amount, method }),
+      body: JSON.stringify({ amount, method, phone }),
+    }),
+
+  confirmDeposit: (depositId, transactionCode) =>
+    api.request("/wallet/confirm-deposit", {
+      method: "POST",
+      body: JSON.stringify({ depositId, transactionCode }),
     }),
 
   withdraw: (amount, method, phone) =>
@@ -65,6 +70,36 @@ const api = {
 
   getActiveProducts: () => api.request("/products/active"),
   getReferralStats: () => api.request("/referrals/stats"),
+  getReferrals: () => api.request("/referrals/list"),
 };
+// ============================================================
+// DÉPÔTS
+// ============================================================
 
-export default api;
+/** Étape 1 : initier un dépôt */
+async function deposit(amount, method, phone) {
+  const res = await http.post("/wallet/deposit", { amount, method, phone });
+  return res.data;
+}
+
+/** Étape 2 : confirmer avec le code de transaction SMS */
+async function confirmDeposit(depositId, transactionCode) {
+  const res = await http.post("/wallet/confirm-deposit", {
+    depositId,
+    transactionCode,
+  });
+  return res.data;
+}
+
+/** Récupérer l'historique des dépôts */
+async function getDeposits() {
+  const res = await http.get("/wallet/deposits");
+  return res.data;
+}
+
+export default {
+  api,
+  deposit,
+  confirmDeposit,
+  getDeposits,
+};

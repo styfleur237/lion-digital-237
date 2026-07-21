@@ -95,6 +95,37 @@ async function getDb() {
     )
   `);
 
+  db.run(`
+      CREATE TABLE IF NOT EXISTS deposits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        method TEXT NOT NULL CHECK(method IN ('MTN','ORANGE')),
+        phone TEXT NOT NULL,
+        transaction_code TEXT,
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','awaiting_admin','approved','rejected')),
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+
+  db.run(`
+  CREATE TABLE IF NOT EXISTS deposits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    method TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    transaction_code TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    validated_by INTEGER DEFAULT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )
+`);
+
   // Créer l'admin par défaut
   const adminExists = db.exec("SELECT id FROM users WHERE username = 'admin'");
   if (adminExists.length === 0 || adminExists[0].values.length === 0) {

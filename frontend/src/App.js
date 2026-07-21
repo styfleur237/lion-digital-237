@@ -2134,246 +2134,621 @@ function WalletScreen({ state }) {
 }
 
 /* ============================================================
-   DEPOSIT SCREEN
+   DEPOSIT SCREEN (NOUVEAU — USSD + Validation admin)
    ============================================================ */
 function DepositScreen({ state }) {
+  const [step, setStep] = useState("form"); // form → instructions → confirmation
   const [method, setMethod] = useState("mtn");
   const [amount, setAmount] = useState("");
-  const [number, setNumber] = useState("");
+  const [phone, setPhone] = useState("");
+  const [transactionCode, setTransactionCode] = useState("");
+  const [depositId, setDepositId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
 
-  const submit = async () => {
-    if (!amount || number < 500) {
-      state.showToast("Montant minimum : 500 FCFA", "error");
+  const current = MERCHANT[method];
+
+  const ussdCode =
+    method === "mtn"
+      ? `*126*${current.number}*${parseInt(amount) || 0}#`
+      : `#144#*${current.number}*${parseInt(amount) || 0}#`;
+
+  const submitDeposit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!amount || parseInt(amount) < 500) {
+      setError("Le montant minimum est de 500 FCFA");
       return;
     }
-    const ok = await state.makeDeposit(amount, MERCHANT[method].name);
-    if (ok) {
-      setAmount("");
-      setNumber("");
+    if (!phone || phone.length < 9) {
+      setError("Saisis ton numéro de téléphone");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api.deposit(parseInt(amount), current.name, phone);
+      setDepositId(res.deposit?.id || res.id);
+      setStep("instructions");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const current = MERCHANT[method];
+  const confirmDeposit = async () => {
+    setError("");
+    if (!transactionCode || transactionCode.length < 4) {
+      setError("Saisis le code de transaction reçu par SMS");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.confirmDeposit(depositId, transactionCode);
+      setSuccess(true);
+      setStep("confirmation");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    state.showToast("Copié !", "success");
+  };
 
   return (
     <div>
       <TopBar title="Recharger mon compte" onBack={state.goBack} />
-      <div style={{ padding: "18px 20px 32px" }}>
-        <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-          {Object.entries(MERCHANT).map(([key, m]) => (
-            <button
-              key={key}
-              onClick={() => setMethod(key)}
+
+      {step === "form" && (
+        <div style={{ padding: "18px 20px 32px" }}>
+          {/* Choix méthode */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+            {Object.entries(MERCHANT).map(([key, m]) => (
+              <button
+                key={key}
+                onClick={() => setMethod(key)}
+                style={{
+                  flex: 1,
+                  padding: "14px 8px",
+                  borderRadius: 14,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border:
+                    method === key
+                      ? `2px solid ${m.color}`
+                      : `1.5px solid ${T.border}`,
+                  background: method === key ? m.bgSoft : T.white,
+                  color: T.ink,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Smartphone size={16} color={m.color} /> {m.name}
+              </button>
+            ))}
+          </div>
+
+          <form onSubmit={submitDeposit}>
+            <TextField
+              label="Montant (FCFA)"
+              placeholder="Ex : 5000"
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+
+            {/* Quick amounts */}
+            <div
               style={{
-                flex: 1,
-                padding: "14px 8px",
-                borderRadius: 14,
-                fontSize: 12.5,
-                fontWeight: 700,
-                cursor: "pointer",
-                border:
-                  method === key
-                    ? `2px solid ${m.color}`
-                    : `1.5px solid ${T.border}`,
-                background: method === key ? m.bgSoft : T.white,
-                color: T.ink,
+                display: "flex",
+                gap: 8,
+                marginBottom: 18,
+                flexWrap: "wrap",
+              }}
+            >
+              {[5000, 10000, 25000, 50000].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setAmount(String(v))}
+                  style={{
+                    flex: "1 0 auto",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: `1.5px solid ${T.border}`,
+                    background: Number(amount) === v ? T.greenSoft : T.white,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    color: Number(amount) === v ? T.green : T.ink,
+                    cursor: "pointer",
+                  }}
+                >
+                  {v.toLocaleString("fr-FR")} FCFA
+                </button>
+              ))}
+            </div>
+
+            <TextField
+              label={`Ton numéro ${current.name.split(" ")[0]} (celui avec lequel tu paies)`}
+              placeholder="Ex : 691234567"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength="9"
+            />
+
+            {error && (
+              <div
+                style={{
+                  background: "#fef2f2",
+                  color: T.danger,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                  marginBottom: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <X size={16} /> {error}
+              </div>
+            )}
+
+            <PrimaryButton type="submit" disabled={loading}>
+              {loading
+                ? "Traitement..."
+                : "Obtenir les instructions de paiement"}
+            </PrimaryButton>
+          </form>
+        </div>
+      )}
+
+      {step === "instructions" && (
+        <div style={{ padding: "18px 20px 32px" }}>
+          <div
+            style={{
+              background: `linear-gradient(135deg, ${current.bgSoft}, ${T.white})`,
+              borderRadius: 18,
+              padding: "20px",
+              marginBottom: 20,
+              border: `1.5px solid ${current.color}33`,
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                background: current.color + "22",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                margin: "0 auto 12px",
+              }}
+            >
+              <Smartphone size={28} color={current.color} />
+            </div>
+            <h2
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: T.ink,
+                margin: "0 0 4px",
+              }}
+            >
+              Effectue le paiement
+            </h2>
+            <p style={{ fontSize: 13, color: T.inkSoft, margin: 0 }}>
+              Suis les 3 étapes ci-dessous
+            </p>
+          </div>
+
+          {/* Étape 1 */}
+          <div
+            style={{
+              background: T.grayBg,
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: T.green,
+                  color: T.white,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                1
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>
+                  Envoie{" "}
+                  <strong>
+                    {parseInt(amount).toLocaleString("fr-FR")} FCFA
+                  </strong>{" "}
+                  au
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 900,
+                      color: current.color,
+                      letterSpacing: 1,
+                      fontFamily: "'Courier New', monospace",
+                    }}
+                  >
+                    {current.number}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(current.number)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#94a3b8",
+                      padding: 4,
+                    }}
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: T.inkSoft }}>
+                  ({current.name})
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Étape 2 - USSD */}
+          <div
+            style={{
+              background: T.grayBg,
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: T.gold,
+                  color: T.white,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                2
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>
+                  Compose le code USSD suivant sur ton téléphone :
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <code
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 900,
+                      color: T.ink,
+                      background: T.white,
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      border: `1.5px solid ${T.border}`,
+                    }}
+                  >
+                    {ussdCode}
+                  </code>
+                  <button
+                    onClick={() => copyToClipboard(ussdCode)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#94a3b8",
+                      padding: 4,
+                    }}
+                  >
+                    <Copy size={14} />
+                  </button>
+                </div>
+                <div style={{ fontSize: 12, color: T.inkSoft, marginTop: 4 }}>
+                  Depuis ton numéro <strong>{phone}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Étape 3 */}
+          <div
+            style={{
+              background: T.grayBg,
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 20,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "50%",
+                  background: "#3b82f6",
+                  color: T.white,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                3
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.ink }}>
+                  Reviens ici et saisis le code de transaction reçu par SMS
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderTop: `1px solid ${T.border}`,
+              paddingTop: 18,
+              marginBottom: 14,
+            }}
+          >
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                fontWeight: 600,
+                color: T.inkSoft,
+                marginBottom: 6,
+              }}
+            >
+              Code de transaction (reçu par SMS)
+            </label>
+            <input
+              type="text"
+              placeholder="Ex : C9F6B2A1"
+              value={transactionCode}
+              onChange={(e) => setTransactionCode(e.target.value.toUpperCase())}
+              maxLength="20"
+              style={{
+                width: "100%",
+                padding: "13px 14px",
+                borderRadius: 12,
+                border: `1.5px solid ${T.border}`,
+                fontSize: 15,
+                color: T.ink,
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = T.green;
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = T.border;
+              }}
+            />
+          </div>
+
+          {error && (
+            <div
+              style={{
+                background: "#fef2f2",
+                color: T.danger,
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 13,
+                marginBottom: 14,
+                display: "flex",
+                alignItems: "center",
                 gap: 8,
               }}
             >
-              <Smartphone size={16} color={m.color} /> {m.name}
-            </button>
-          ))}
-        </div>
-        <div
-          style={{
-            background: `linear-gradient(135deg, ${current.bgSoft}, ${T.white})`,
-            borderRadius: 18,
-            padding: "20px",
-            marginBottom: 20,
-            border: `1.5px solid ${current.color}33`,
-            textAlign: "center",
-          }}
-        >
-          <div
+              <X size={16} /> {error}
+            </div>
+          )}
+
+          <PrimaryButton onClick={confirmDeposit} disabled={loading}>
+            {loading ? "Vérification..." : "J'ai payé, valider"}
+          </PrimaryButton>
+
+          <p
             style={{
-              width: 50,
-              height: 50,
-              borderRadius: 15,
-              background: current.color,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 12px",
-              color: T.white,
-            }}
-          >
-            <Smartphone size={24} />
-          </div>
-          <div
-            style={{
-              fontSize: 12.5,
-              color: T.inkSoft,
-              fontWeight: 600,
-              marginBottom: 4,
-            }}
-          >
-            Envoyez l'argent à ce numéro
-          </div>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              color: T.ink,
-              letterSpacing: 1,
-              fontFamily: "'Courier New', monospace",
-            }}
-          >
-            {current.number}
-          </div>
-          <div
-            style={{
+              textAlign: "center",
               fontSize: 12,
-              color: current.color,
-              fontWeight: 700,
-              marginTop: 6,
-              background: current.bgSoft,
-              display: "inline-block",
-              padding: "4px 14px",
-              borderRadius: 20,
+              color: T.inkSoft,
+              marginTop: 12,
             }}
           >
-            {current.name}
-          </div>
+            Ton dépôt sera vérifié par l'administrateur avant d'être crédité.
+          </p>
         </div>
-        <div
-          style={{
-            background: T.grayBg,
-            borderRadius: 14,
-            padding: "14px 16px",
-            marginBottom: 20,
-            fontSize: 13,
-            color: T.inkSoft,
-            lineHeight: 1.6,
-          }}
-        >
-          <strong style={{ color: T.ink }}>Comment faire ?</strong>
-          <br />
-          1. Ouvre l'application {current.name}
-          <br />
-          2. Envoie le montant au <strong>{current.number}</strong>
-          <br />
-          3. Saisis le montant et ton numéro ci-dessous
-          <br />
-          4. Clique sur "Effectuer le dépôt"
-        </div>
-        <TextField
-          label="Votre numéro de paiement"
-          placeholder="Ex : 654157406"
-          type="tel"
-          value={number}
-          onChange={(e) => setNumber(e.target.value)}
-        />
-        <TextField
-          label="Montant à déposer (FCFA)"
-          placeholder="Ex : 10000"
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-        />
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 20,
-            flexWrap: "wrap",
-          }}
-        >
-          {[5000, 10000, 25000, 50000].map((v) => (
-            <button
-              key={v}
-              onClick={() => setAmount(String(v))}
+      )}
+
+      {step === "confirmation" && success && (
+        <div style={{ padding: "18px 20px 32px" }}>
+          <div
+            style={{
+              background: `linear-gradient(135deg, ${T.greenSoft}, ${T.white})`,
+              borderRadius: 18,
+              padding: "32px 20px",
+              textAlign: "center",
+              border: `1.5px solid ${T.green}33`,
+            }}
+          >
+            <div
               style={{
-                flex: "1 0 auto",
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: `1.5px solid ${T.border}`,
-                background: Number(amount) === v ? T.greenSoft : T.white,
-                fontSize: 12.5,
+                width: 72,
+                height: 72,
+                borderRadius: "50%",
+                background: T.green,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px",
+              }}
+            >
+              <Check size={36} color={T.white} />
+            </div>
+            <h2
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                color: T.ink,
+                margin: "0 0 6px",
+              }}
+            >
+              Dépôt soumis !
+            </h2>
+            <p
+              style={{
+                fontSize: 14,
+                color: T.inkSoft,
+                margin: "0 0 4px",
+                lineHeight: 1.5,
+              }}
+            >
+              Ton dépôt de{" "}
+              <strong>{parseInt(amount).toLocaleString("fr-FR")} FCFA</strong>{" "}
+              via {current.name}
+            </p>
+            <p style={{ fontSize: 14, color: T.inkSoft, margin: "0 0 20px" }}>
+              est en attente de validation par l'administrateur.
+            </p>
+
+            <div
+              style={{
+                background: T.white,
+                borderRadius: 14,
+                padding: "14px 16px",
+                marginBottom: 20,
+                textAlign: "left",
+                border: `1px dashed ${T.border}`,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: T.inkSoft,
+                  marginBottom: 8,
+                }}
+              >
+                Récapitulatif
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 13,
+                  color: T.ink,
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ color: T.inkSoft }}>Montant</span>
+                <span style={{ fontWeight: 700 }}>
+                  {parseInt(amount).toLocaleString("fr-FR")} FCFA
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 13,
+                  color: T.ink,
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ color: T.inkSoft }}>Méthode</span>
+                <span style={{ fontWeight: 700 }}>{current.name}</span>
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 13,
+                  color: T.ink,
+                }}
+              >
+                <span style={{ color: T.inkSoft }}>Code transaction</span>
+                <span style={{ fontWeight: 700, fontFamily: "monospace" }}>
+                  {transactionCode}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                state.goBack();
+                state.goBack();
+              }}
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: 12,
+                border: "none",
+                background: T.green,
+                color: T.white,
+                fontSize: 15,
                 fontWeight: 700,
-                color: Number(amount) === v ? T.green : T.ink,
                 cursor: "pointer",
               }}
             >
-              {v.toLocaleString("fr-FR")} FCFA
+              Retour au tableau de bord
             </button>
-          ))}
+          </div>
         </div>
-        <PrimaryButton onClick={submit} disabled={state.loading}>
-          {state.loading ? "Traitement..." : "Effectuer le dépôt"}
-        </PrimaryButton>
-        <div style={{ marginTop: 28 }}>
-          <h3
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: T.ink,
-              margin: "0 0 12px",
-            }}
-          >
-            Mes derniers dépôts
-          </h3>
-          {state.deposits.slice(0, 10).map((d) => (
-            <div
-              key={d.id || d._id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                background: T.grayBg,
-                borderRadius: 14,
-                padding: "12px 16px",
-                marginBottom: 8,
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>
-                  {formatFCFA(d.amount)}
-                </div>
-                <div style={{ fontSize: 12, color: T.inkSoft }}>
-                  {new Date(d.date).toLocaleDateString("fr-FR")} · {d.method}
-                </div>
-              </div>
-              <span
-                style={{
-                  fontSize: 11.5,
-                  fontWeight: 700,
-                  color: T.green,
-                  background: T.greenSoft,
-                  padding: "4px 10px",
-                  borderRadius: 8,
-                }}
-              >
-                {d.status}
-              </span>
-            </div>
-          ))}
-          {state.deposits.length === 0 && (
-            <p
-              style={{
-                fontSize: 13,
-                color: T.inkSoft,
-                textAlign: "center",
-                padding: 16,
-              }}
-            >
-              Aucun dépôt pour le moment.
-            </p>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -2757,92 +3132,238 @@ function ReferralScreen({ state }) {
    PROFILE SCREEN
    ============================================================ */
 function ProfileScreen({ state }) {
-  const [showLogoutPopup, setShowLogoutPopup] = useState(false);
+  const [profile, setProfile] = useState(null);
+  const [referralCount, setReferralCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [profData, refData] = await Promise.all([
+          api.getProfile(),
+          api.getReferralStats(),
+        ]);
+        setProfile(profData);
+        setReferralCount(refData.direct || refData.totalReferrals || 0);
+      } catch (err) {
+        state.showToast("Erreur chargement profil", "error");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const handleLogout = () => setShowLogoutConfirm(true);
+  const confirmLogout = () => {
+    localStorage.removeItem("lionToken");
+    NOTIFS.length = 0;
+    REWARDS.length = 0;
+    setShowLogoutConfirm(false);
+    state.goTo("welcome");
+  };
+
+  if (loading)
+    return (
+      <div>
+        <Loader text="Chargement du profil..." />
+      </div>
+    );
+
+  const user = profile?.user || state.auth || {};
+  const isActive = user.status === "actif" || user.status === "active";
 
   return (
     <div>
-      <TopBar title="Mon profil" />
+      <TopBar title="Profil" onBack={state.goBack} />
+
       <div style={{ padding: "18px 20px 32px" }}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
+        {/* Carte profil */}
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${T.green}, ${T.gold})`,
+            borderRadius: 20,
+            padding: "24px 20px",
+            marginBottom: 20,
+            color: T.white,
+            textAlign: "center",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
-              width: 70,
-              height: 70,
-              borderRadius: 20,
-              background: `linear-gradient(135deg, ${T.greenSoft}, ${T.goldSoft})`,
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: T.white,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               margin: "0 auto 12px",
+              fontSize: 28,
+              fontWeight: 900,
+              color: T.green,
+              boxShadow: "0 4px 15px rgba(0,0,0,0.15)",
             }}
           >
-            <User size={32} color={T.green} />
+            {(user.username || "U").charAt(0).toUpperCase()}
           </div>
-          <div style={{ fontSize: 17, fontWeight: 800, color: T.ink }}>
-            {state.auth?.username || "Utilisateur"}
+
+          <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px" }}>
+            {user.username || "Utilisateur"}
+          </h2>
+
+          <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 10 }}>
+            {user.phone || "Pas de téléphone"}
           </div>
-          <div style={{ fontSize: 13.5, color: T.inkSoft }}>
-            {state.auth?.phone || ""}
-          </div>
-          {state.auth?.role === "admin" && (
-            <div
+
+          {/* Statut */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              background: isActive
+                ? "rgba(255,255,255,0.25)"
+                : "rgba(255,255,255,0.15)",
+              borderRadius: 20,
+              padding: "4px 14px",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            <span
               style={{
-                fontSize: 11.5,
-                fontWeight: 700,
-                color: T.gold,
-                background: T.goldSoft,
-                padding: "3px 12px",
-                borderRadius: 10,
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: isActive ? "#4ade80" : "#f87171",
                 display: "inline-block",
-                marginTop: 6,
               }}
-            >
-              Administrateur
-            </div>
-          )}
+            />
+            {isActive ? "Compte actif" : "Compte inactif"}
+          </div>
         </div>
-        <div style={{ marginBottom: 24 }}>
+
+        {/* Infos personnelles */}
+        <div style={{ marginBottom: 20 }}>
+          <h3
+            style={{
+              fontSize: 13,
+              fontWeight: 700,
+              color: T.inkSoft,
+              margin: "0 0 10px",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+          >
+            Informations personnelles
+          </h3>
+          <ProfileRow
+            icon={User}
+            label="Nom d'utilisateur"
+            value={user.username || "—"}
+          />
           <ProfileRow
             icon={Phone}
-            label="Numéro de téléphone"
-            value={state.auth?.phone || "Non renseigné"}
+            label="ID (Téléphone)"
+            value={user.phone || "—"}
           />
           <ProfileRow
             icon={Mail}
             label="Email"
-            value={state.auth?.email || "Non renseigné"}
+            value={user.email || "Non renseigné"}
+          />
+          <ProfileRow
+            icon={ShieldCheck}
+            label="Rôle"
+            value={user.role === "admin" ? "Administrateur" : "Utilisateur"}
           />
         </div>
-        {state.auth?.role === "admin" && (
-          <button
-            onClick={() => state.setSubScreen("admin")}
+
+        {/* Stats parrainage */}
+        <div
+          style={{
+            background: T.grayBg,
+            borderRadius: 14,
+            padding: "16px",
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <div
             style={{
-              width: "100%",
+              width: 44,
+              height: 44,
+              borderRadius: 12,
               background: T.goldSoft,
-              border: `1.5px solid ${T.gold}55`,
-              borderRadius: 14,
-              padding: "13px 0",
-              fontSize: 14,
-              fontWeight: 700,
-              color: T.gold,
-              cursor: "pointer",
-              marginBottom: 14,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            Panneau d'administration
-          </button>
-        )}
+            <Users size={22} color={T.gold} />
+          </div>
+          <div>
+            <div style={{ fontSize: 13, color: T.inkSoft, fontWeight: 600 }}>
+              Nombre de filleuls
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: T.green }}>
+              {referralCount}
+            </div>
+          </div>
+        </div>
+
+        {/* Lien de parrainage */}
+        <div
+          style={{
+            background: T.goldSoft,
+            borderRadius: 14,
+            padding: "14px 16px",
+            marginBottom: 20,
+            border: `1px solid ${T.gold}33`,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: T.inkSoft,
+              marginBottom: 6,
+            }}
+          >
+            🔗 Ton lien de parrainage
+          </div>
+          <div
+            style={{
+              background: T.white,
+              borderRadius: 10,
+              padding: "10px 12px",
+              fontSize: 12.5,
+              fontWeight: 600,
+              color: T.green,
+              wordBreak: "break-all",
+            }}
+          >
+            {window.location.origin}/register?ref={user.id || user.phone}
+          </div>
+        </div>
+
+        {/* Déconnexion */}
         <button
-          onClick={() => setShowLogoutPopup(true)}
+          onClick={handleLogout}
           style={{
             width: "100%",
-            background: T.white,
-            border: `1.5px solid #E8D8D8`,
+            padding: "14px",
             borderRadius: 14,
-            padding: "13px 0",
+            border: `1.5px solid ${T.danger}`,
+            background: "transparent",
+            color: T.danger,
             fontSize: 14,
             fontWeight: 700,
-            color: T.danger,
             cursor: "pointer",
             display: "flex",
             alignItems: "center",
@@ -2850,63 +3371,61 @@ function ProfileScreen({ state }) {
             gap: 8,
           }}
         >
-          <LogOut size={17} /> Déconnexion
+          <LogOut size={18} />
+          Se déconnecter
         </button>
       </div>
 
-      {showLogoutPopup && (
+      {/* Popup de confirmation */}
+      {showLogoutConfirm && (
         <div
           style={{
             position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 1000,
+            zIndex: 999,
           }}
         >
           <div
             style={{
               background: T.white,
               borderRadius: 20,
-              padding: "28px 24px",
+              padding: "24px 20px",
               width: "85%",
               maxWidth: 320,
               textAlign: "center",
             }}
           >
             <LogOut size={36} color={T.danger} style={{ marginBottom: 12 }} />
-            <h2
+            <h3
               style={{
                 fontSize: 17,
                 fontWeight: 800,
                 color: T.ink,
-                margin: "0 0 8px",
+                margin: "0 0 6px",
               }}
             >
-              Déconnexion
-            </h2>
-            <p
-              style={{
-                fontSize: 13.5,
-                color: T.inkSoft,
-                lineHeight: 1.5,
-                marginBottom: 20,
-              }}
-            >
-              Voulez-vous vraiment vous déconnecter ?
+              Se déconnecter ?
+            </h3>
+            <p style={{ fontSize: 13, color: T.inkSoft, marginBottom: 20 }}>
+              Tu vas être redirigé vers l'accueil.
             </p>
             <div style={{ display: "flex", gap: 10 }}>
               <button
-                onClick={() => setShowLogoutPopup(false)}
+                onClick={() => setShowLogoutConfirm(false)}
                 style={{
                   flex: 1,
-                  padding: "12px 0",
+                  padding: "12px",
                   borderRadius: 12,
-                  border: `1.5px solid ${T.border}`,
+                  border: `1px solid ${T.border}`,
                   background: T.white,
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: 700,
                   color: T.ink,
                   cursor: "pointer",
@@ -2915,23 +3434,20 @@ function ProfileScreen({ state }) {
                 Annuler
               </button>
               <button
-                onClick={() => {
-                  setShowLogoutPopup(false);
-                  state.logout();
-                }}
+                onClick={confirmLogout}
                 style={{
                   flex: 1,
-                  padding: "12px 0",
+                  padding: "12px",
                   borderRadius: 12,
                   border: "none",
                   background: T.danger,
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: 700,
                   color: T.white,
                   cursor: "pointer",
                 }}
               >
-                Se déconnecter
+                Déconnexion
               </button>
             </div>
           </div>

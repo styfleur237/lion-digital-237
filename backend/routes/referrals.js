@@ -1,48 +1,63 @@
 const express = require("express");
-const auth = require("../middleware/auth");
 const router = express.Router();
+const { getDb } = require("../database/init");
+const { authenticate } = require("../middleware/auth");
 
-router.get("/stats", auth, (req, res) => {
-  const db = req.db;
-  const refResult = db.exec(
-    `SELECT * FROM referrals WHERE referrerId = ${req.userId}`,
-  );
-  const referrals = [];
-  let validated = 0;
+// Stats des parrainages
+router.get("/stats", authenticate, async (req, res) => {
+  try {
+    const db = await getDb();
+    const userId = req.user.id;
 
-  if (refResult.length > 0) {
-    const cols = refResult[0].columns;
-    for (const row of refResult[0].values) {
-      const ref = {
-        id: row[cols.indexOf("id")],
-        referrerId: row[cols.indexOf("referrerId")],
-        username: row[cols.indexOf("username")],
-        validated: row[cols.indexOf("validated")],
-        reward: row[cols.indexOf("reward")],
-      };
-      referrals.push(ref);
-      if (ref.validated) validated++;
-    }
+    const direct = db.prepare(
+      "SELECT COUNT(*) as count FROM users WHERE referred_by = ?",
+    );
+    const directCount = direct.getAsObject(userId).count;
+
+    const validated = db.prepare(`
+      SELECT COUNT(*) as count FROM users u
+      INNER JOIN purchases p ON p.user_id = u.id
+      WHERE u.referred_by = ?
+    `);
+    const validatedCount = validated.getAsObject(userId).count;
+
+    const rewards = db.prepare(`
+      SELECT COALESCE(SUM(r.amount), 0) as total FROM rewards r
+      WHERE r.user_id = ?
+    `);
+    const rewardsTotal = rewards.getAsObject(userId).total;
+
+    res.json({
+      direct: directCount,
+      validated: validatedCount,
+      rewards: rewardsTotal,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  res.json({
-    referralCode: req.user.referralCode,
-    direct: referrals.length,
-    validated,
-    rewards: req.user.referralRewards || 0,
-    referrals,
-  });
 });
 
-router.get("/check/:code", (req, res) => {
-  const db = req.db;
-  const escCode = req.params.code.replace(/'/g, "''");
-  const result = db.exec(
-    `SELECT username FROM users WHERE referralCode = '${escCode}'`,
-  );
-  const valid = result.length > 0 && result[0].values.length > 0;
-  const referrer = valid ? result[0].values[0][0] : null;
-  res.json({ valid, referrer });
+// Liste des filleuls avec leurs infos
+router.get("/list", authenticate, async (req, res) => {
+  try {
+    const db = await getDb();
+    const userId = req.user.id;
+
+    const referrals = db.prepare(`
+      SELECT id, username, phone, created_at, balance,
+        (SELECT COUNT(*) FROM purchases WHERE user_id = users.id) as purchases_count,
+        (SELECT SUM(amount) FROM purchases WHERE user_id = users.id) as purchases_total
+      FROM users
+      WHERE referred_by = ?
+      ORDER BY created_at DESC
+    `);
+    const rows = referrals.getAsObject(userId);
+    const list = rows ? (Array.isArray(rows) ? rows : [rows]) : [];
+
+    res.json({ referrals: list });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

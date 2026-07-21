@@ -36,6 +36,9 @@ app.use("/api/wallet", walletRoutes);
 app.use("/api/referrals", referralRoutes);
 app.use("/api/admin", adminRoutes);
 
+const walletRoutes = require("./routes/wallet");
+app.use("/", walletRoutes);
+
 app.get("/", (req, res) => {
   res.json({
     name: "Lion Digital 237 API",
