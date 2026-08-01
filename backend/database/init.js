@@ -21,7 +21,7 @@ async function getDb() {
 
   db.run("PRAGMA foreign_keys = ON");
 
-  // Créer les tables
+  // ===== UTILISATEURS =====
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +38,7 @@ async function getDb() {
     )
   `);
 
+  // ===== PRODUITS ACTIFS =====
   db.run(`
     CREATE TABLE IF NOT EXISTS active_products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,18 +50,7 @@ async function getDb() {
     )
   `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS deposits (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      userId INTEGER NOT NULL,
-      date TEXT DEFAULT (datetime('now', 'localtime')),
-      amount REAL NOT NULL,
-      method TEXT,
-      status TEXT DEFAULT 'Validé',
-      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
+  // ===== RETRAITS =====
   db.run(`
     CREATE TABLE IF NOT EXISTS withdrawals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,6 +63,7 @@ async function getDb() {
     )
   `);
 
+  // ===== ACHATS =====
   db.run(`
     CREATE TABLE IF NOT EXISTS purchases (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +75,7 @@ async function getDb() {
     )
   `);
 
+  // ===== PARRAINAGE =====
   db.run(`
     CREATE TABLE IF NOT EXISTS referrals (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,51 +87,58 @@ async function getDb() {
     )
   `);
 
-  db.run(`
-      CREATE TABLE IF NOT EXISTS deposits (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        amount INTEGER NOT NULL,
-        method TEXT NOT NULL CHECK(method IN ('MTN','ORANGE')),
-        phone TEXT NOT NULL,
-        transaction_code TEXT,
-        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','awaiting_admin','approved','rejected')),
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (user_id) REFERENCES users(id)
-      )
-    `);
+  // ===== MIGRATION DEPOSITS =====
+  // Si une ancienne table deposits existe (sans phone / user_id),
+  // on la supprime pour la recréer avec le bon schéma.
+  let depositsColumns = [];
+  try {
+    const info = db.exec("PRAGMA table_info(deposits)");
+    if (info.length > 0 && info[0].values.length > 0) {
+      depositsColumns = info[0].values.map((row) => row[1]);
+    }
+  } catch (e) {
+    depositsColumns = [];
+  }
 
-  db.run(`
-  CREATE TABLE IF NOT EXISTS deposits (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    amount INTEGER NOT NULL,
-    method TEXT NOT NULL,
-    phone TEXT NOT NULL,
-    transaction_code TEXT DEFAULT '',
-    status TEXT DEFAULT 'pending',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    validated_by INTEGER DEFAULT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )
-`);
+  if (
+    depositsColumns.length > 0 &&
+    (!depositsColumns.includes("user_id") || !depositsColumns.includes("phone"))
+  ) {
+    console.log("[DB] Migration : suppression de l'ancienne table deposits");
+    db.run("DROP TABLE IF EXISTS deposits");
+  }
 
-  // Créer l'admin par défaut
+  // ===== DÉPÔTS (NOUVEAU SCHÉMA — une seule définition) =====
+  db.run(`
+    CREATE TABLE IF NOT EXISTS deposits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      method TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      transaction_code TEXT DEFAULT '',
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT (datetime('now', 'localtime')),
+      updated_at TEXT DEFAULT (datetime('now', 'localtime')),
+      validated_by INTEGER DEFAULT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  // ===== ADMIN PAR DÉFAUT =====
   const adminExists = db.exec("SELECT id FROM users WHERE username = 'admin'");
   if (adminExists.length === 0 || adminExists[0].values.length === 0) {
     const salt = bcrypt.genSaltSync(12);
     const hash = bcrypt.hashSync("Admin123!", salt);
     db.run(
       `INSERT INTO users (username, phone, password, referralCode, role, balance)
-            VALUES ('admin', '+237 600 000 000', ?, 'LD237-ADMIN', 'admin', 1000000)`,
+       VALUES ('admin', '+237 600 000 000', ?, 'LD237-ADMIN', 'admin', 1000000)`,
       [hash],
     );
     console.log("[DB] Admin créé (admin / Admin123!)");
   }
 
-  // Sauvegarder
+  // ===== SAUVEGARDE =====
   saveDb();
 
   return db;

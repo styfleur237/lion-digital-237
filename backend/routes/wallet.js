@@ -58,7 +58,6 @@ router.get("/balance", (req, res) => {
 
 /* ============================================================
    POST /deposit — l'utilisateur initie un dépôt
-   (statut initial : pending)
    ============================================================ */
 router.post("/deposit", (req, res) => {
   const { amount, method, phone } = req.body;
@@ -97,7 +96,6 @@ router.post("/deposit", (req, res) => {
 
 /* ============================================================
    POST /confirm-deposit — l'utilisateur saisit le code SMS
-   (statut : pending → pending_admin, en attente de l'admin)
    ============================================================ */
 router.post("/confirm-deposit", (req, res) => {
   const { depositId, transactionCode } = req.body;
@@ -182,7 +180,7 @@ router.post("/withdraw", (req, res) => {
       userId,
     ]);
     req.db.exec(
-      "INSERT INTO withdrawals (userId, amount, method, phone, status, created_at) VALUES (?, ?, ?, ?, 'en attente', CURRENT_TIMESTAMP)",
+      "INSERT INTO withdrawals (userId, amount, method, phone, status, date) VALUES (?, ?, ?, ?, 'en attente', datetime('now', 'localtime'))",
       [userId, amt, method, String(phone)],
     );
     saveDb();
@@ -214,7 +212,7 @@ router.get("/history", (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Dépôts (statuts traduits pour l'affichage)
+    // Dépôts (table deposits : user_id, phone, created_at)
     let deposits = [];
     try {
       const d = req.db.exec(
@@ -226,7 +224,7 @@ router.get("/history", (req, res) => {
                 END AS status,
                 created_at AS date
          FROM deposits WHERE user_id = ?
-         ORDER BY created_at DESC LIMIT 50`,
+         ORDER BY id DESC LIMIT 50`,
         [userId],
       );
       if (d.length > 0 && d[0].values.length > 0) {
@@ -243,11 +241,11 @@ router.get("/history", (req, res) => {
       console.error("Historique dépôts:", e);
     }
 
-    // Retraits
+    // Retraits (table withdrawals : userId, date)
     let withdrawals = [];
     try {
       const w = req.db.exec(
-        "SELECT id, amount, method, status, created_at AS date FROM withdrawals WHERE userId = ? ORDER BY created_at DESC LIMIT 50",
+        "SELECT id, amount, method, status, date FROM withdrawals WHERE userId = ? ORDER BY id DESC LIMIT 50",
         [userId],
       );
       if (w.length > 0 && w[0].values.length > 0) {
@@ -264,11 +262,11 @@ router.get("/history", (req, res) => {
       console.error("Historique retraits:", e);
     }
 
-    // Achats (table purchases : colonne product)
+    // Achats (table purchases : userId, product, date)
     let purchases = [];
     try {
       const p = req.db.exec(
-        "SELECT id, product, amount, created_at AS date FROM purchases WHERE userId = ? ORDER BY created_at DESC LIMIT 50",
+        "SELECT id, product, amount, date FROM purchases WHERE userId = ? ORDER BY id DESC LIMIT 50",
         [userId],
       );
       if (p.length > 0 && p[0].values.length > 0) {
@@ -306,7 +304,7 @@ router.get("/admin/deposits/pending", (req, res) => {
               d.created_at, u.username, u.phone AS user_phone
        FROM deposits d JOIN users u ON d.user_id = u.id
        WHERE d.status = 'pending_admin'
-       ORDER BY d.created_at ASC`,
+       ORDER BY d.id ASC`,
     );
     let deposits = [];
     if (result.length > 0 && result[0].values.length > 0) {
@@ -329,7 +327,7 @@ router.get("/admin/deposits/pending", (req, res) => {
   }
 });
 
-// Approuver un dépôt → crédite le solde de l'utilisateur
+// Approuver un dépôt → crédite le solde
 router.post("/admin/deposits/approve", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
@@ -351,7 +349,7 @@ router.post("/admin/deposits/approve", (req, res) => {
     const row = result[0].values[0];
     const status = row[cols.indexOf("status")];
     const amount = row[cols.indexOf("amount")];
-    const userId = row[cols.indexOf("user_id")];
+    const depositUserId = row[cols.indexOf("user_id")];
 
     if (status !== "pending_admin") {
       return res.status(400).json({ error: "Ce dépôt n'est pas en attente" });
@@ -360,10 +358,10 @@ router.post("/admin/deposits/approve", (req, res) => {
     // Créditer le solde
     req.db.exec("UPDATE users SET balance = balance + ? WHERE id = ?", [
       amount,
-      userId,
+      depositUserId,
     ]);
     req.db.exec(
-      "UPDATE deposits SET status = 'approved', validated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      "UPDATE deposits SET status = 'approved', validated_by = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
       [req.user.id, depositId],
     );
     saveDb();
@@ -406,7 +404,7 @@ router.post("/admin/deposits/reject", (req, res) => {
     }
 
     req.db.exec(
-      "UPDATE deposits SET status = 'rejected', validated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      "UPDATE deposits SET status = 'rejected', validated_by = ?, updated_at = datetime('now', 'localtime') WHERE id = ?",
       [req.user.id, depositId],
     );
     saveDb();

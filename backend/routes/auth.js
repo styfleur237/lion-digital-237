@@ -185,7 +185,7 @@ router.post("/login", async (req, res) => {
 });
 
 /* ============================================================
-   GET /profile — avec token (CORRIGÉ)
+   GET /profile — avec token
    ============================================================ */
 router.get("/profile", authenticate, (req, res) => {
   try {
@@ -210,22 +210,18 @@ router.get("/profile", authenticate, (req, res) => {
       role: row[cols.indexOf("role")],
     };
 
-    // Produits actifs — adapter les noms de colonnes à ta table "purchases"
+    // Produits actifs (table active_products)
     let activeProducts = [];
     try {
       const ap = req.db.exec(
-        "SELECT id, productId, product_name, amount, purchasedAt, daysLeft, status FROM purchases WHERE user_id = ? AND status = 'active' ORDER BY purchasedAt DESC",
+        "SELECT id, productId, purchasedAt, daysLeft FROM active_products WHERE userId = ? ORDER BY id DESC",
         [req.user.id],
       );
       if (ap.length > 0 && ap[0].values.length > 0) {
         const ac = ap[0].columns;
         activeProducts = ap[0].values.map((r) => ({
           id: r[ac.indexOf("id")],
-          productId:
-            r[ac.indexOf("productId")] !== undefined &&
-            r[ac.indexOf("productId")] !== null
-              ? r[ac.indexOf("productId")]
-              : r[ac.indexOf("product_name")],
+          productId: r[ac.indexOf("productId")],
           purchasedAt: r[ac.indexOf("purchasedAt")] || new Date().toISOString(),
           daysLeft: r[ac.indexOf("daysLeft")] || 30,
         }));
@@ -238,7 +234,7 @@ router.get("/profile", authenticate, (req, res) => {
     res.json({
       ...user,
       activeProducts,
-      user, // pour le ProfileScreen
+      user,
     });
   } catch (err) {
     console.error("[Auth] Profile:", err);
