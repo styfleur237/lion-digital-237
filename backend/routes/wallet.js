@@ -1,9 +1,10 @@
 const express = require("express");
-const router = express.Router();
 const jwt = require("jsonwebtoken");
+const { saveDb } = require("../database/init");
+const router = express.Router();
 
 /* ============================================================
-   AUTH — vérifie le token et remplit req.user
+   AUTH — vérifie le token JWT et remplit req.user
    ============================================================ */
 function authenticate(req, res, next) {
   const header = req.headers.authorization || "";
@@ -22,6 +23,7 @@ function authenticate(req, res, next) {
 
 router.use(authenticate);
 
+// Vérifier que la base est prête
 router.use((req, res, next) => {
   if (!req.db) {
     return res.status(503).json({
@@ -37,7 +39,7 @@ function isAdmin(req) {
 }
 
 /* ============================================================
-   GET /balance
+   GET /balance — solde de l'utilisateur
    ============================================================ */
 router.get("/balance", (req, res) => {
   try {
@@ -55,35 +57,37 @@ router.get("/balance", (req, res) => {
 });
 
 /* ============================================================
-   POST /deposit — initier un dépôt
+   POST /deposit — l'utilisateur initie un dépôt
+   (statut initial : pending)
    ============================================================ */
 router.post("/deposit", (req, res) => {
   const { amount, method, phone } = req.body;
   const userId = req.user.id;
+  const amt = Number(amount);
 
-  if (!amount || amount < 500) {
+  if (!Number.isFinite(amt) || amt < 500) {
     return res.status(400).json({ error: "Montant minimum : 500 FCFA" });
   }
   if (!method) {
     return res.status(400).json({ error: "Méthode de paiement requise" });
   }
-  if (!phone || phone.length < 9) {
+  if (!phone || String(phone).length < 9) {
     return res.status(400).json({ error: "Numéro de téléphone requis" });
   }
 
   try {
     req.db.exec(
       "INSERT INTO deposits (user_id, amount, method, phone, status) VALUES (?, ?, ?, ?, 'pending')",
-      [userId, amount, method, phone],
+      [userId, amt, method, String(phone)],
     );
+    saveDb();
 
-    // sql.js : récupérer l'ID du dépôt créé
     const idRes = req.db.exec("SELECT last_insert_rowid() AS id");
     const depositId = idRes[0].values[0][0];
 
     res.status(201).json({
       success: true,
-      deposit: { id: depositId, amount, method, phone, status: "pending" },
+      deposit: { id: depositId, amount: amt, method, phone, status: "pending" },
     });
   } catch (err) {
     console.error("Erreur dépôt :", err);
@@ -92,7 +96,8 @@ router.post("/deposit", (req, res) => {
 });
 
 /* ============================================================
-   POST /confirm-deposit — saisir le code SMS
+   POST /confirm-deposit — l'utilisateur saisit le code SMS
+   (statut : pending → pending_admin, en attente de l'admin)
    ============================================================ */
 router.post("/confirm-deposit", (req, res) => {
   const { depositId, transactionCode } = req.body;
@@ -124,8 +129,9 @@ router.post("/confirm-deposit", (req, res) => {
 
     req.db.exec(
       "UPDATE deposits SET transaction_code = ?, status = 'pending_admin', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [transactionCode, depositId],
+      [String(transactionCode), depositId],
     );
+    saveDb();
 
     res.json({
       success: true,
@@ -145,14 +151,15 @@ router.post("/confirm-deposit", (req, res) => {
 router.post("/withdraw", (req, res) => {
   const { amount, method, phone } = req.body;
   const userId = req.user.id;
+  const amt = Number(amount);
 
-  if (!amount || amount < 1000) {
+  if (!Number.isFinite(amt) || amt < 1000) {
     return res.status(400).json({ error: "Montant minimum : 1 000 FCFA" });
   }
   if (!method) {
     return res.status(400).json({ error: "Méthode de retrait requise" });
   }
-  if (!phone || phone.length < 9) {
+  if (!phone || String(phone).length < 9) {
     return res.status(400).json({ error: "Numéro de réception requis" });
   }
 
@@ -165,27 +172,29 @@ router.post("/withdraw", (req, res) => {
         ? userResult[0].values[0][0] || 0
         : 0;
 
-    if (balance < amount) {
+    if (balance < amt) {
       return res.status(400).json({ error: "Solde insuffisant" });
     }
 
+    // Débiter immédiatement (remboursé si refusé par l'admin)
     req.db.exec("UPDATE users SET balance = balance - ? WHERE id = ?", [
-      amount,
+      amt,
       userId,
     ]);
     req.db.exec(
-      "INSERT INTO withdrawals (user_id, amount, method, phone, status, created_at) VALUES (?, ?, ?, ?, 'en attente', CURRENT_TIMESTAMP)",
-      [userId, amount, method, phone],
+      "INSERT INTO withdrawals (userId, amount, method, phone, status, created_at) VALUES (?, ?, ?, ?, 'en attente', CURRENT_TIMESTAMP)",
+      [userId, amt, method, String(phone)],
     );
+    saveDb();
 
     const idRes = req.db.exec("SELECT last_insert_rowid() AS id");
 
     res.status(201).json({
       success: true,
-      balance: balance - amount,
+      balance: balance - amt,
       withdrawal: {
         id: idRes[0].values[0][0],
-        amount,
+        amount: amt,
         method,
         phone,
         status: "en attente",
@@ -199,13 +208,13 @@ router.post("/withdraw", (req, res) => {
 });
 
 /* ============================================================
-   GET /history — dépôts + retraits + achats
+   GET /history — historique complet (dépôts + retraits + achats)
    ============================================================ */
 router.get("/history", (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Dépôts
+    // Dépôts (statuts traduits pour l'affichage)
     let deposits = [];
     try {
       const d = req.db.exec(
@@ -238,7 +247,7 @@ router.get("/history", (req, res) => {
     let withdrawals = [];
     try {
       const w = req.db.exec(
-        "SELECT id, amount, method, status, created_at AS date FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+        "SELECT id, amount, method, status, created_at AS date FROM withdrawals WHERE userId = ? ORDER BY created_at DESC LIMIT 50",
         [userId],
       );
       if (w.length > 0 && w[0].values.length > 0) {
@@ -255,11 +264,11 @@ router.get("/history", (req, res) => {
       console.error("Historique retraits:", e);
     }
 
-    // Achats
+    // Achats (table purchases : colonne product)
     let purchases = [];
     try {
       const p = req.db.exec(
-        "SELECT id, product_name AS product, amount, created_at AS date FROM purchases WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+        "SELECT id, product, amount, created_at AS date FROM purchases WHERE userId = ? ORDER BY created_at DESC LIMIT 50",
         [userId],
       );
       if (p.length > 0 && p[0].values.length > 0) {
@@ -283,8 +292,10 @@ router.get("/history", (req, res) => {
 });
 
 /* ============================================================
-   ADMIN — dépôts en attente
+   ADMIN — dépôts en attente de validation
    ============================================================ */
+
+// Liste des dépôts en attente (pending_admin)
 router.get("/admin/deposits/pending", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
@@ -318,6 +329,7 @@ router.get("/admin/deposits/pending", (req, res) => {
   }
 });
 
+// Approuver un dépôt → crédite le solde de l'utilisateur
 router.post("/admin/deposits/approve", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
@@ -345,6 +357,7 @@ router.post("/admin/deposits/approve", (req, res) => {
       return res.status(400).json({ error: "Ce dépôt n'est pas en attente" });
     }
 
+    // Créditer le solde
     req.db.exec("UPDATE users SET balance = balance + ? WHERE id = ?", [
       amount,
       userId,
@@ -353,6 +366,7 @@ router.post("/admin/deposits/approve", (req, res) => {
       "UPDATE deposits SET status = 'approved', validated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [req.user.id, depositId],
     );
+    saveDb();
 
     res.json({
       success: true,
@@ -364,6 +378,7 @@ router.post("/admin/deposits/approve", (req, res) => {
   }
 });
 
+// Refuser un dépôt
 router.post("/admin/deposits/reject", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
@@ -394,6 +409,7 @@ router.post("/admin/deposits/reject", (req, res) => {
       "UPDATE deposits SET status = 'rejected', validated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
       [req.user.id, depositId],
     );
+    saveDb();
 
     res.json({
       success: true,

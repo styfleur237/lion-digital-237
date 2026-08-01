@@ -1,5 +1,5 @@
 const express = require("express");
-const auth = require("../middleware/auth");
+const jwt = require("jsonwebtoken");
 const { saveDb } = require("../database/init");
 const router = express.Router();
 
@@ -76,71 +76,132 @@ const PRODUCTS = [
   },
 ];
 
+/* ============================================================
+   AUTH intégré (même style que wallet.js)
+   ============================================================ */
+function authenticate(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token) return res.status(401).json({ error: "Non connecté" });
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Session expirée. Reconnecte-toi." });
+  }
+}
+
+/* ============================================================
+   GET /catalog — liste des produits (public)
+   ============================================================ */
 router.get("/catalog", (req, res) => {
   res.json(PRODUCTS);
 });
 
-router.post("/buy", auth, (req, res) => {
+/* ============================================================
+   POST /buy — acheter un produit
+   ============================================================ */
+router.post("/buy", authenticate, (req, res) => {
   try {
     const { productId } = req.body;
     const db = req.db;
+    const userId = req.user.id;
     const product = PRODUCTS.find((p) => p.id === productId);
     if (!product)
       return res.status(400).json({ error: "Produit introuvable." });
 
-    if (req.user.balance < product.price) {
+    // Lire l'utilisateur en base (solde + parrain)
+    const userRes = db.exec(
+      "SELECT id, username, balance, referredBy FROM users WHERE id = ?",
+      [userId],
+    );
+    if (userRes.length === 0 || userRes[0].values.length === 0) {
+      return res.status(401).json({ error: "Utilisateur introuvable." });
+    }
+    const uc = userRes[0].columns;
+    const urow = userRes[0].values[0];
+    const user = {
+      id: urow[uc.indexOf("id")],
+      username: urow[uc.indexOf("username")],
+      balance: urow[uc.indexOf("balance")] || 0,
+      referredBy: urow[uc.indexOf("referredBy")] || null,
+    };
+
+    if (user.balance < product.price) {
       return res.status(400).json({ error: "Solde insuffisant." });
     }
 
-    db.run(
-      `UPDATE users SET balance = balance - ${product.price} WHERE id = ${req.userId}`,
-    );
-    db.run(
-      `INSERT INTO active_products (userId, productId, daysLeft) VALUES (${req.userId}, '${product.id}', ${product.days})`,
-    );
-    const escName = product.name.replace(/'/g, "''");
-    db.run(
-      `INSERT INTO purchases (userId, product, amount) VALUES (${req.userId}, '${escName}', ${product.price})`,
+    // Débiter le solde
+    db.exec("UPDATE users SET balance = balance - ? WHERE id = ?", [
+      product.price,
+      userId,
+    ]);
+
+    // Produit actif
+    db.exec(
+      "INSERT INTO active_products (userId, productId, daysLeft, purchasedAt) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+      [userId, product.id, product.days],
     );
 
-    // Bonus parrainage
-    if (req.user.referredBy) {
-      const refResult = db.exec(
-        `SELECT id FROM users WHERE username = '${req.user.referredBy.replace(/'/g, "''")}'`,
-      );
-      if (refResult.length > 0 && refResult[0].values.length > 0) {
-        const referrerId = refResult[0].values[0][0];
-        const bonus = Math.round(product.price * 0.05);
-        db.run(
-          `UPDATE users SET balance = balance + ${bonus}, referralRewards = referralRewards + ${bonus} WHERE id = ${referrerId}`,
-        );
-        db.run(
-          `UPDATE referrals SET validated = 1, reward = ${bonus} WHERE referrerId = ${referrerId} AND username = '${req.user.username.replace(/'/g, "''")}'`,
-        );
+    // Historique d'achat
+    db.exec(
+      "INSERT INTO purchases (userId, product, amount) VALUES (?, ?, ?)",
+      [userId, product.name, product.price],
+    );
+
+    // Bonus parrainage : 5 % au parrain
+    if (user.referredBy) {
+      try {
+        const refRes = db.exec("SELECT id FROM users WHERE username = ?", [
+          user.referredBy,
+        ]);
+        if (refRes.length > 0 && refRes[0].values.length > 0) {
+          const referrerId = refRes[0].values[0][0];
+          const bonus = Math.round(product.price * 0.05);
+          db.exec(
+            "UPDATE users SET balance = balance + ?, referralRewards = referralRewards + ? WHERE id = ?",
+            [bonus, bonus, referrerId],
+          );
+          try {
+            db.exec(
+              "UPDATE referrals SET validated = 1, reward = ? WHERE referrerId = ? AND username = ?",
+              [bonus, referrerId, user.username],
+            );
+          } catch (e) {
+            /* colonne reward peut manquer selon ta table */
+          }
+        }
+      } catch (e) {
+        console.error("[Products] Bonus parrainage:", e);
       }
     }
 
     saveDb();
 
-    const userResult = db.exec(
-      `SELECT balance FROM users WHERE id = ${req.userId}`,
-    );
-    const balance = userResult[0].values[0][0];
-    const activeResult = db.exec(
-      `SELECT * FROM active_products WHERE userId = ${req.userId}`,
+    // Nouveau solde
+    const balRes = db.exec("SELECT balance FROM users WHERE id = ?", [userId]);
+    const balance = balRes[0].values[0][0];
+
+    // Produits actifs
+    const actRes = db.exec(
+      "SELECT * FROM active_products WHERE userId = ? ORDER BY id DESC",
+      [userId],
     );
     const activeProducts = [];
-    if (activeResult.length > 0) {
-      const cols = activeResult[0].columns;
-      for (const row of activeResult[0].values) {
+    if (actRes.length > 0) {
+      const ac = actRes[0].columns;
+      for (const row of actRes[0].values) {
+        const prod = PRODUCTS.find(
+          (p) => p.id === row[ac.indexOf("productId")],
+        );
         activeProducts.push({
-          id: row[cols.indexOf("id")],
-          userId: row[cols.indexOf("userId")],
-          productId: row[cols.indexOf("productId")],
-          purchasedAt: row[cols.indexOf("purchasedAt")],
-          daysLeft: row[cols.indexOf("daysLeft")],
-          name: product.name,
-          daily: product.daily,
+          id: row[ac.indexOf("id")],
+          productId: row[ac.indexOf("productId")],
+          purchasedAt:
+            row[ac.indexOf("purchasedAt")] || new Date().toISOString(),
+          daysLeft: row[ac.indexOf("daysLeft")] || product.days,
+          name: prod ? prod.name : product.name,
+          daily: prod ? prod.daily : product.daily,
         });
       }
     }
@@ -157,30 +218,39 @@ router.post("/buy", auth, (req, res) => {
   }
 });
 
-router.get("/active", auth, (req, res) => {
-  const db = req.db;
-  const result = db.exec(
-    `SELECT * FROM active_products WHERE userId = ${req.userId}`,
-  );
-  const products = [];
-  if (result.length > 0) {
-    const cols = result[0].columns;
-    for (const row of result[0].values) {
-      const prod = PRODUCTS.find(
-        (p) => p.id === row[cols.indexOf("productId")],
-      );
-      products.push({
-        id: row[cols.indexOf("id")],
-        productId: row[cols.indexOf("productId")],
-        purchasedAt: row[cols.indexOf("purchasedAt")],
-        daysLeft: row[cols.indexOf("daysLeft")],
-        name: prod ? prod.name : "Inconnu",
-        daily: prod ? prod.daily : 0,
-        price: prod ? prod.price : 0,
-      });
+/* ============================================================
+   GET /active — produits actifs de l'utilisateur
+   ============================================================ */
+router.get("/active", authenticate, (req, res) => {
+  try {
+    const db = req.db;
+    const userId = req.user.id;
+    const result = db.exec("SELECT * FROM active_products WHERE userId = ?", [
+      userId,
+    ]);
+    const products = [];
+    if (result.length > 0) {
+      const cols = result[0].columns;
+      for (const row of result[0].values) {
+        const prod = PRODUCTS.find(
+          (p) => p.id === row[cols.indexOf("productId")],
+        );
+        products.push({
+          id: row[cols.indexOf("id")],
+          productId: row[cols.indexOf("productId")],
+          purchasedAt: row[cols.indexOf("purchasedAt")],
+          daysLeft: row[cols.indexOf("daysLeft")],
+          name: prod ? prod.name : "Inconnu",
+          daily: prod ? prod.daily : 0,
+          price: prod ? prod.price : 0,
+        });
+      }
     }
+    res.json(products);
+  } catch (err) {
+    console.error("[Products] Active:", err);
+    res.status(500).json({ error: "Erreur serveur" });
   }
-  res.json(products);
 });
 
 module.exports = router;
