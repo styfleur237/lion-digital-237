@@ -5,6 +5,9 @@ const API_BASE =
 const api = {
   async request(endpoint, options = {}) {
     const token = localStorage.getItem("lionToken");
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000); // 20s max
+
     const config = {
       headers: {
         "Content-Type": "application/json",
@@ -12,14 +15,20 @@ const api = {
         ...options.headers,
       },
       ...options,
+      signal: controller.signal,
     };
 
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, config);
+      clearTimeout(timeout);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Erreur serveur");
       return data;
     } catch (err) {
+      clearTimeout(timeout);
+      if (err.name === "AbortError") {
+        throw new Error("Le serveur met trop de temps à répondre. Réessaie.");
+      }
       if (err.message === "Failed to fetch") {
         throw new Error("Impossible de contacter le serveur.");
       }
@@ -27,6 +36,7 @@ const api = {
     }
   },
 
+  /* ===== AUTH ===== */
   register: (username, phone, password, referralCode) =>
     api.request("/auth/register", {
       method: "POST",
@@ -40,7 +50,10 @@ const api = {
     }),
 
   getProfile: () => api.request("/auth/profile"),
+
+  /* ===== WALLET ===== */
   getBalance: () => api.request("/wallet/balance"),
+
   deposit: (amount, method, phone) =>
     api.request("/wallet/deposit", {
       method: "POST",
@@ -60,46 +73,27 @@ const api = {
     }),
 
   getHistory: () => api.request("/wallet/history"),
-  getCatalog: () => api.request("/products/catalog"),
 
+  /* ===== PRODUCTS ===== */
+  getCatalog: () => api.request("/products/catalog"),
   buyProduct: (productId) =>
     api.request("/products/buy", {
       method: "POST",
       body: JSON.stringify({ productId }),
     }),
-
   getActiveProducts: () => api.request("/products/active"),
+
+  /* ===== PARRAINAGE ===== */
   getReferralStats: () => api.request("/referrals/stats"),
   getReferrals: () => api.request("/referrals/list"),
+
+  /* ===== ADMIN (utilisé par AdminScreen) ===== */
+  adminStats: () => api.request("/admin/stats"),
+  adminAction: (userId, action) =>
+    api.request("/admin/action", {
+      method: "POST",
+      body: JSON.stringify({ userId, action }),
+    }),
 };
-// ============================================================
-// DÉPÔTS
-// ============================================================
 
-/** Étape 1 : initier un dépôt */
-async function deposit(amount, method, phone) {
-  const res = await http.post("/wallet/deposit", { amount, method, phone });
-  return res.data;
-}
-
-/** Étape 2 : confirmer avec le code de transaction SMS */
-async function confirmDeposit(depositId, transactionCode) {
-  const res = await http.post("/wallet/confirm-deposit", {
-    depositId,
-    transactionCode,
-  });
-  return res.data;
-}
-
-/** Récupérer l'historique des dépôts */
-async function getDeposits() {
-  const res = await http.get("/wallet/deposits");
-  return res.data;
-}
-
-export default {
-  api,
-  deposit,
-  confirmDeposit,
-  getDeposits,
-};
+export default api;

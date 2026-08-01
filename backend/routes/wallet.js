@@ -1,25 +1,66 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../database/init");
+const jwt = require("jsonwebtoken");
 
 /* ============================================================
-   MIDDLEWARE : vérifie que l'utilisateur est connecté
+   AUTH — vérifie le token et remplit req.user
    ============================================================ */
-function requireAuth(req, res, next) {
-  if (!req.user || !req.user.id) {
+function authenticate(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+
+  if (!token) {
     return res.status(401).json({ error: "Non connecté" });
   }
+  try {
+    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Session expirée. Reconnecte-toi." });
+  }
+}
+
+router.use(authenticate);
+
+router.use((req, res, next) => {
+  if (!req.db) {
+    return res.status(503).json({
+      error:
+        "Base de données en cours d'initialisation. Réessaie dans quelques secondes.",
+    });
+  }
   next();
+});
+
+function isAdmin(req) {
+  return req.user && (req.user.role === "admin" || req.user.isAdmin === true);
 }
 
 /* ============================================================
-   POST /wallet/deposit  — l'utilisateur initie un dépôt
+   GET /balance
    ============================================================ */
-router.post("/wallet/deposit", requireAuth, (req, res) => {
+router.get("/balance", (req, res) => {
+  try {
+    const result = req.db.exec("SELECT balance FROM users WHERE id = ?", [
+      req.user.id,
+    ]);
+    if (result.length === 0 || result[0].values.length === 0) {
+      return res.status(404).json({ error: "Utilisateur introuvable" });
+    }
+    res.json({ balance: result[0].values[0][0] || 0 });
+  } catch (err) {
+    console.error("Erreur solde :", err);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+/* ============================================================
+   POST /deposit — initier un dépôt
+   ============================================================ */
+router.post("/deposit", (req, res) => {
   const { amount, method, phone } = req.body;
   const userId = req.user.id;
 
-  // Validation
   if (!amount || amount < 500) {
     return res.status(400).json({ error: "Montant minimum : 500 FCFA" });
   }
@@ -31,21 +72,18 @@ router.post("/wallet/deposit", requireAuth, (req, res) => {
   }
 
   try {
-    const stmt = db.prepare(`
-      INSERT INTO deposits (user_id, amount, method, phone, status)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    const result = stmt.run(userId, amount, method, phone, "pending");
+    req.db.exec(
+      "INSERT INTO deposits (user_id, amount, method, phone, status) VALUES (?, ?, ?, ?, 'pending')",
+      [userId, amount, method, phone],
+    );
+
+    // sql.js : récupérer l'ID du dépôt créé
+    const idRes = req.db.exec("SELECT last_insert_rowid() AS id");
+    const depositId = idRes[0].values[0][0];
 
     res.status(201).json({
       success: true,
-      deposit: {
-        id: result.lastInsertRowid,
-        amount,
-        method,
-        phone,
-        status: "pending",
-      },
+      deposit: { id: depositId, amount, method, phone, status: "pending" },
     });
   } catch (err) {
     console.error("Erreur dépôt :", err);
@@ -54,10 +92,9 @@ router.post("/wallet/deposit", requireAuth, (req, res) => {
 });
 
 /* ============================================================
-   POST /wallet/confirm-deposit
-   — l'utilisateur saisit le code de transaction reçu par SMS
+   POST /confirm-deposit — saisir le code SMS
    ============================================================ */
-router.post("/wallet/confirm-deposit", requireAuth, (req, res) => {
+router.post("/confirm-deposit", (req, res) => {
   const { depositId, transactionCode } = req.body;
   const userId = req.user.id;
 
@@ -68,35 +105,33 @@ router.post("/wallet/confirm-deposit", requireAuth, (req, res) => {
   }
 
   try {
-    const deposit = db
-      .prepare("SELECT * FROM deposits WHERE id = ? AND user_id = ?")
-      .get(depositId, userId);
+    const result = req.db.exec(
+      "SELECT * FROM deposits WHERE id = ? AND user_id = ?",
+      [depositId, userId],
+    );
 
-    if (!deposit) {
+    if (result.length === 0 || result[0].values.length === 0) {
       return res.status(404).json({ error: "Dépôt introuvable" });
     }
 
-    if (deposit.status !== "pending") {
+    const cols = result[0].columns;
+    const row = result[0].values[0];
+    const status = row[cols.indexOf("status")];
+
+    if (status !== "pending") {
       return res.status(400).json({ error: "Ce dépôt a déjà été traité" });
     }
 
-    // Enregistrer le code de transaction et marquer en attente admin
-    db.prepare(
-      `
-      UPDATE deposits
-      SET transaction_code = ?, status = 'pending_admin', updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `,
-    ).run(transactionCode, depositId);
+    req.db.exec(
+      "UPDATE deposits SET transaction_code = ?, status = 'pending_admin', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [transactionCode, depositId],
+    );
 
     res.json({
       success: true,
       message:
         "Code enregistré. En attente de validation par l'administrateur.",
-      deposit: {
-        id: depositId,
-        status: "pending_admin",
-      },
+      deposit: { id: depositId, status: "pending_admin" },
     });
   } catch (err) {
     console.error("Erreur confirmation dépôt :", err);
@@ -105,55 +140,177 @@ router.post("/wallet/confirm-deposit", requireAuth, (req, res) => {
 });
 
 /* ============================================================
-   GET /wallet/deposits  — historique des dépôts de l'utilisateur
+   POST /withdraw — demande de retrait
    ============================================================ */
-router.get("/wallet/deposits", requireAuth, (req, res) => {
+router.post("/withdraw", (req, res) => {
+  const { amount, method, phone } = req.body;
   const userId = req.user.id;
 
-  try {
-    const deposits = db
-      .prepare(
-        `
-      SELECT id, amount, method, phone, transaction_code, status, created_at
-      FROM deposits
-      WHERE user_id = ?
-      ORDER BY created_at DESC
-      LIMIT 50
-    `,
-      )
-      .all(userId);
+  if (!amount || amount < 1000) {
+    return res.status(400).json({ error: "Montant minimum : 1 000 FCFA" });
+  }
+  if (!method) {
+    return res.status(400).json({ error: "Méthode de retrait requise" });
+  }
+  if (!phone || phone.length < 9) {
+    return res.status(400).json({ error: "Numéro de réception requis" });
+  }
 
-    res.json({ deposits });
+  try {
+    const userResult = req.db.exec("SELECT balance FROM users WHERE id = ?", [
+      userId,
+    ]);
+    const balance =
+      userResult.length > 0 && userResult[0].values.length > 0
+        ? userResult[0].values[0][0] || 0
+        : 0;
+
+    if (balance < amount) {
+      return res.status(400).json({ error: "Solde insuffisant" });
+    }
+
+    req.db.exec("UPDATE users SET balance = balance - ? WHERE id = ?", [
+      amount,
+      userId,
+    ]);
+    req.db.exec(
+      "INSERT INTO withdrawals (user_id, amount, method, phone, status, created_at) VALUES (?, ?, ?, ?, 'en attente', CURRENT_TIMESTAMP)",
+      [userId, amount, method, phone],
+    );
+
+    const idRes = req.db.exec("SELECT last_insert_rowid() AS id");
+
+    res.status(201).json({
+      success: true,
+      balance: balance - amount,
+      withdrawal: {
+        id: idRes[0].values[0][0],
+        amount,
+        method,
+        phone,
+        status: "en attente",
+        date: new Date().toISOString(),
+      },
+    });
   } catch (err) {
-    console.error("Erreur récupération dépôts :", err);
+    console.error("Erreur retrait :", err);
     res.status(500).json({ error: "Erreur serveur" });
   }
 });
 
 /* ============================================================
-   ADMIN : GET /admin/deposits/pending
-   — l'admin voit toutes les demandes en attente
+   GET /history — dépôts + retraits + achats
    ============================================================ */
-router.get("/admin/deposits/pending", requireAuth, (req, res) => {
-  // Vérifier que l'utilisateur est admin (tu peux adapter selon ton système)
-  if (!req.user.isAdmin) {
-    return res.status(403).json({ error: "Accès réservé à l'administrateur" });
-  }
+router.get("/history", (req, res) => {
+  const userId = req.user.id;
 
   try {
-    const deposits = db
-      .prepare(
-        `
-      SELECT d.id, d.amount, d.method, d.phone, d.transaction_code,
-             d.created_at, u.username, u.phone AS user_phone
-      FROM deposits d
-      JOIN users u ON d.user_id = u.id
-      WHERE d.status = 'pending_admin'
-      ORDER BY d.created_at ASC
-    `,
-      )
-      .all();
+    // Dépôts
+    let deposits = [];
+    try {
+      const d = req.db.exec(
+        `SELECT id, amount, method, phone,
+                CASE status
+                  WHEN 'approved' THEN 'approuvé'
+                  WHEN 'rejected' THEN 'refusé'
+                  ELSE 'en attente'
+                END AS status,
+                created_at AS date
+         FROM deposits WHERE user_id = ?
+         ORDER BY created_at DESC LIMIT 50`,
+        [userId],
+      );
+      if (d.length > 0 && d[0].values.length > 0) {
+        const c = d[0].columns;
+        deposits = d[0].values.map((r) => ({
+          id: r[c.indexOf("id")],
+          amount: r[c.indexOf("amount")],
+          method: r[c.indexOf("method")],
+          status: r[c.indexOf("status")],
+          date: r[c.indexOf("date")],
+        }));
+      }
+    } catch (e) {
+      console.error("Historique dépôts:", e);
+    }
 
+    // Retraits
+    let withdrawals = [];
+    try {
+      const w = req.db.exec(
+        "SELECT id, amount, method, status, created_at AS date FROM withdrawals WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+        [userId],
+      );
+      if (w.length > 0 && w[0].values.length > 0) {
+        const c = w[0].columns;
+        withdrawals = w[0].values.map((r) => ({
+          id: r[c.indexOf("id")],
+          amount: r[c.indexOf("amount")],
+          method: r[c.indexOf("method")],
+          status: r[c.indexOf("status")],
+          date: r[c.indexOf("date")],
+        }));
+      }
+    } catch (e) {
+      console.error("Historique retraits:", e);
+    }
+
+    // Achats
+    let purchases = [];
+    try {
+      const p = req.db.exec(
+        "SELECT id, product_name AS product, amount, created_at AS date FROM purchases WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+        [userId],
+      );
+      if (p.length > 0 && p[0].values.length > 0) {
+        const c = p[0].columns;
+        purchases = p[0].values.map((r) => ({
+          id: r[c.indexOf("id")],
+          product: r[c.indexOf("product")],
+          amount: r[c.indexOf("amount")],
+          date: r[c.indexOf("date")],
+        }));
+      }
+    } catch (e) {
+      console.error("Historique achats:", e);
+    }
+
+    res.json({ deposits, withdrawals, purchases });
+  } catch (err) {
+    console.error("Erreur historique :", err);
+    res.status(500).json({ error: "Erreur serveur" });
+  }
+});
+
+/* ============================================================
+   ADMIN — dépôts en attente
+   ============================================================ */
+router.get("/admin/deposits/pending", (req, res) => {
+  if (!isAdmin(req)) {
+    return res.status(403).json({ error: "Accès réservé à l'administrateur" });
+  }
+  try {
+    const result = req.db.exec(
+      `SELECT d.id, d.amount, d.method, d.phone, d.transaction_code,
+              d.created_at, u.username, u.phone AS user_phone
+       FROM deposits d JOIN users u ON d.user_id = u.id
+       WHERE d.status = 'pending_admin'
+       ORDER BY d.created_at ASC`,
+    );
+    let deposits = [];
+    if (result.length > 0 && result[0].values.length > 0) {
+      const c = result[0].columns;
+      deposits = result[0].values.map((r) => ({
+        id: r[c.indexOf("id")],
+        amount: r[c.indexOf("amount")],
+        method: r[c.indexOf("method")],
+        phone: r[c.indexOf("phone")],
+        transaction_code: r[c.indexOf("transaction_code")],
+        created_at: r[c.indexOf("created_at")],
+        username: r[c.indexOf("username")],
+        user_phone: r[c.indexOf("user_phone")],
+      }));
+    }
     res.json({ deposits });
   } catch (err) {
     console.error("Erreur admin dépôts :", err);
@@ -161,60 +318,45 @@ router.get("/admin/deposits/pending", requireAuth, (req, res) => {
   }
 });
 
-/* ============================================================
-   ADMIN : POST /admin/deposits/approve
-   — l'admin valide un dépôt → crédite le solde
-   ============================================================ */
-router.post("/admin/deposits/approve", requireAuth, (req, res) => {
-  if (!req.user.isAdmin) {
+router.post("/admin/deposits/approve", (req, res) => {
+  if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
   }
-
   const { depositId } = req.body;
-  const adminId = req.user.id;
-
   if (!depositId) {
     return res.status(400).json({ error: "ID dépôt requis" });
   }
 
   try {
-    const deposit = db
-      .prepare("SELECT * FROM deposits WHERE id = ?")
-      .get(depositId);
-
-    if (!deposit) {
+    const result = req.db.exec("SELECT * FROM deposits WHERE id = ?", [
+      depositId,
+    ]);
+    if (result.length === 0 || result[0].values.length === 0) {
       return res.status(404).json({ error: "Dépôt introuvable" });
     }
 
-    if (deposit.status !== "pending_admin") {
+    const cols = result[0].columns;
+    const row = result[0].values[0];
+    const status = row[cols.indexOf("status")];
+    const amount = row[cols.indexOf("amount")];
+    const userId = row[cols.indexOf("user_id")];
+
+    if (status !== "pending_admin") {
       return res.status(400).json({ error: "Ce dépôt n'est pas en attente" });
     }
 
-    // Créditer le solde de l'utilisateur
-    const user = db
-      .prepare("SELECT * FROM users WHERE id = ?")
-      .get(deposit.user_id);
-    const newBalance = (user.balance || 0) + deposit.amount;
-    db.prepare("UPDATE users SET balance = ? WHERE id = ?").run(
-      newBalance,
-      deposit.user_id,
+    req.db.exec("UPDATE users SET balance = balance + ? WHERE id = ?", [
+      amount,
+      userId,
+    ]);
+    req.db.exec(
+      "UPDATE deposits SET status = 'approved', validated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [req.user.id, depositId],
     );
-
-    // Marquer le dépôt comme approuvé
-    db.prepare(
-      `
-      UPDATE deposits
-      SET status = 'approved', validated_by = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `,
-    ).run(adminId, depositId);
-
-    // Optionnel : ajouter une notification pour l'utilisateur
-    // (à implémenter selon ton système de notifications)
 
     res.json({
       success: true,
-      message: `Dépôt de ${deposit.amount} FCFA approuvé et crédité.`,
+      message: `Dépôt de ${amount} FCFA approuvé et crédité.`,
     });
   } catch (err) {
     console.error("Erreur approbation dépôt :", err);
@@ -222,46 +364,40 @@ router.post("/admin/deposits/approve", requireAuth, (req, res) => {
   }
 });
 
-/* ============================================================
-   ADMIN : POST /admin/deposits/reject
-   — l'admin refuse un dépôt
-   ============================================================ */
-router.post("/admin/deposits/reject", requireAuth, (req, res) => {
-  if (!req.user.isAdmin) {
+router.post("/admin/deposits/reject", (req, res) => {
+  if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
   }
-
   const { depositId } = req.body;
-  const adminId = req.user.id;
-
   if (!depositId) {
     return res.status(400).json({ error: "ID dépôt requis" });
   }
 
   try {
-    const deposit = db
-      .prepare("SELECT * FROM deposits WHERE id = ?")
-      .get(depositId);
-
-    if (!deposit) {
+    const result = req.db.exec("SELECT * FROM deposits WHERE id = ?", [
+      depositId,
+    ]);
+    if (result.length === 0 || result[0].values.length === 0) {
       return res.status(404).json({ error: "Dépôt introuvable" });
     }
 
-    if (deposit.status !== "pending_admin") {
+    const cols = result[0].columns;
+    const row = result[0].values[0];
+    const status = row[cols.indexOf("status")];
+    const amount = row[cols.indexOf("amount")];
+
+    if (status !== "pending_admin") {
       return res.status(400).json({ error: "Ce dépôt n'est pas en attente" });
     }
 
-    db.prepare(
-      `
-      UPDATE deposits
-      SET status = 'rejected', validated_by = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `,
-    ).run(adminId, depositId);
+    req.db.exec(
+      "UPDATE deposits SET status = 'rejected', validated_by = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [req.user.id, depositId],
+    );
 
     res.json({
       success: true,
-      message: `Dépôt de ${deposit.amount} FCFA refusé.`,
+      message: `Dépôt de ${amount} FCFA refusé.`,
     });
   } catch (err) {
     console.error("Erreur rejet dépôt :", err);

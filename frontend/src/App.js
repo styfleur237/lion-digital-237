@@ -311,10 +311,15 @@ function useAppState() {
   }, []);
 
   const register = useCallback(
-    async (username, phone, password) => {
+    async (username, phone, password, referralCode) => {
       setLoading(true);
       try {
-        const data = await api.register(username, phone, password);
+        const data = await api.register(
+          username,
+          phone,
+          password,
+          referralCode,
+        );
         localStorage.setItem("lionToken", data.token);
         setAuth(data.user);
         setBalance(data.user.balance);
@@ -1039,7 +1044,7 @@ function RegisterScreen({ state }) {
       return;
     }
     setError("");
-    await state.register(username, phone, pwd);
+    await state.register(username, phone, pwd, ref);
   };
 
   return (
