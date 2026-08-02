@@ -3495,6 +3495,7 @@ function AdminScreen({ state }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(null);
+  const [expanded, setExpanded] = useState(null); // user id ouvert
 
   useEffect(() => {
     (async () => {
@@ -3503,20 +3504,25 @@ function AdminScreen({ state }) {
         setStats(data.stats);
         setUsers(data.users || []);
       } catch (err) {
-        state.showToast("Erreur chargement admin", "error");
+        state.showToast(err.message || "Erreur chargement admin", "error");
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const handleAction = async (userId, action) => {
-    setActionLoading(userId + action);
+  const handleDepositAction = async (depositId, approve) => {
+    const key = depositId + (approve ? "a" : "r");
+    setActionLoading(key);
     try {
-      const data = await api.adminAction(userId, action);
+      const data = approve
+        ? await api.adminApproveDeposit(depositId)
+        : await api.adminRejectDeposit(depositId);
       setUsers(data.users || []);
       setStats(data.stats);
-      state.showToast(`Action "${action}" effectuée`);
+      state.showToast(
+        data.message || (approve ? "Dépôt approuvé" : "Dépôt refusé"),
+      );
     } catch (err) {
       state.showToast(err.message, "error");
     } finally {
@@ -3532,10 +3538,13 @@ function AdminScreen({ state }) {
       </div>
     );
 
+  const fmt = (n) => new Intl.NumberFormat("fr-FR").format(n) + " FCFA";
+
   return (
     <div>
       <TopBar title="Administration" onBack={state.goBack} />
       <div style={{ padding: "18px 20px 32px" }}>
+        {/* ===== VUE D'ENSEMBLE ===== */}
         <div
           style={{
             background: T.goldSoft,
@@ -3553,7 +3562,7 @@ function AdminScreen({ state }) {
               margin: "0 0 12px",
             }}
           >
-            Aperçu de la plateforme
+            Vue d'ensemble
           </h3>
           {stats && (
             <div
@@ -3573,7 +3582,7 @@ function AdminScreen({ state }) {
                 <div
                   style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
                 >
-                  Utilisateurs
+                  Utilisateurs totaux
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>
                   {stats.totalUsers}
@@ -3589,10 +3598,26 @@ function AdminScreen({ state }) {
                 <div
                   style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
                 >
-                  Dépôts totaux
+                  Avec dépôt validé
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: T.green }}>
-                  {formatFCFA(stats.totalDeposits)}
+                  {stats.usersWithValidDeposits}
+                </div>
+              </div>
+              <div
+                style={{
+                  background: T.white,
+                  borderRadius: 12,
+                  padding: "12px 14px",
+                }}
+              >
+                <div
+                  style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
+                >
+                  Dépôts validés
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: T.green }}>
+                  {fmt(stats.totalDeposits)}
                 </div>
               </div>
               <div
@@ -3608,164 +3633,334 @@ function AdminScreen({ state }) {
                   Retraits totaux
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 800, color: T.ink }}>
-                  {formatFCFA(stats.totalWithdrawals)}
-                </div>
-              </div>
-              <div
-                style={{
-                  background: T.white,
-                  borderRadius: 12,
-                  padding: "12px 14px",
-                }}
-              >
-                <div
-                  style={{ fontSize: 11, color: T.inkSoft, fontWeight: 600 }}
-                >
-                  Produits vendus
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: T.gold }}>
-                  {stats.totalPurchases}
+                  {fmt(stats.totalWithdrawals)}
                 </div>
               </div>
             </div>
           )}
         </div>
 
+        {/* ===== DEMANDES EN ATTENTE ===== */}
         <h3
           style={{
             fontSize: 14,
             fontWeight: 700,
             color: T.ink,
-            margin: "0 0 12px",
+            margin: "0 0 4px",
           }}
         >
-          Gestion des utilisateurs
+          Demandes en attente
         </h3>
+        <p style={{ fontSize: 12, color: T.inkSoft, margin: "0 0 12px" }}>
+          {users.length === 0
+            ? "Aucune demande à traiter."
+            : `${users.length} utilisateur${users.length > 1 ? "s" : ""} avec des demandes.`}
+        </p>
 
         {users.length === 0 && (
-          <p
-            style={{
-              fontSize: 13,
-              color: T.inkSoft,
-              textAlign: "center",
-              padding: 20,
-            }}
-          >
-            Aucun utilisateur.
-          </p>
-        )}
-
-        {users.map((u) => (
           <div
-            key={u.id}
             style={{
               background: T.grayBg,
               borderRadius: 14,
-              padding: "14px 16px",
-              marginBottom: 10,
+              padding: "28px 20px",
+              textAlign: "center",
             }}
           >
+            <Check size={32} color={T.green} style={{ marginBottom: 8 }} />
+            <p style={{ fontSize: 13, color: T.inkSoft, margin: 0 }}>
+              Tout est à jour. Les nouvelles demandes apparaîtront ici.
+            </p>
+          </div>
+        )}
+
+        {users.map((u) => {
+          const isOpen = expanded === u.id;
+          const depCount = u.pendingDeposits?.length || 0;
+          return (
             <div
+              key={u.id}
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                marginBottom: 8,
+                background: T.grayBg,
+                borderRadius: 14,
+                marginBottom: 10,
+                overflow: "hidden",
               }}
             >
-              <div>
-                <span style={{ fontSize: 14, fontWeight: 700, color: T.ink }}>
-                  {u.username}
-                </span>
-                {u.role === "admin" && (
-                  <span
+              {/* En-tête cliquable */}
+              <button
+                onClick={() => setExpanded(isOpen ? null : u.id)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "14px 16px",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div
                     style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      color: T.gold,
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
                       background: T.goldSoft,
-                      padding: "2px 8px",
-                      borderRadius: 8,
-                      marginLeft: 8,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: T.gold,
+                      fontWeight: 800,
+                      fontSize: 16,
                     }}
                   >
-                    Admin
-                  </span>
-                )}
-              </div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: T.green }}>
-                {formatFCFA(u.balance)}
-              </span>
-            </div>
-            <div style={{ fontSize: 12, color: T.inkSoft, marginBottom: 10 }}>
-              {u.phone} · Inscrit le{" "}
-              {new Date(u.createdAt).toLocaleDateString("fr-FR")}
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              {u.withdrawals &&
-                u.withdrawals.length > 0 &&
-                u.withdrawals.map(
-                  (w) =>
-                    w.status === "en attente" && (
+                    {(u.username || "?").charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div
+                      style={{ fontSize: 14, fontWeight: 700, color: T.ink }}
+                    >
+                      {u.username}
+                    </div>
+                    <div style={{ fontSize: 12, color: T.inkSoft }}>
+                      {u.phone} · Solde : {fmt(u.balance)}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {depCount > 0 && (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: T.gold,
+                        background: T.goldSoft,
+                        padding: "3px 10px",
+                        borderRadius: 10,
+                      }}
+                    >
+                      {depCount} dépôt{depCount > 1 ? "s" : ""}
+                    </span>
+                  )}
+                  <ChevronDown
+                    size={18}
+                    color={T.inkSoft}
+                    style={{
+                      transform: isOpen ? "rotate(180deg)" : "none",
+                      transition: "transform 0.2s ease",
+                    }}
+                  />
+                </div>
+              </button>
+
+              {/* Détails dépliés */}
+              {isOpen && (
+                <div style={{ padding: "4px 16px 16px" }}>
+                  {/* Dépôts à valider */}
+                  {(u.pendingDeposits || []).map((d) => (
+                    <div
+                      key={d.id}
+                      style={{
+                        background: T.white,
+                        borderRadius: 12,
+                        padding: "12px 14px",
+                        marginBottom: 8,
+                        border: `1px solid ${T.border}`,
+                      }}
+                    >
                       <div
-                        key={w.id}
                         style={{
                           display: "flex",
+                          justifyContent: "space-between",
                           alignItems: "center",
-                          gap: 6,
-                          background: T.white,
-                          borderRadius: 10,
-                          padding: "8px 12px",
-                          fontSize: 12,
-                          color: T.inkSoft,
+                          marginBottom: 6,
                         }}
                       >
-                        <ArrowUpFromLine size={14} color={T.gold} />
-                        <span>{formatFCFA(w.amount)}</span>
-                        <button
-                          onClick={() => handleAction(u.id, `approve-${w.id}`)}
-                          disabled={actionLoading === u.id + `approve-${w.id}`}
+                        <span
                           style={{
+                            fontSize: 15,
+                            fontWeight: 800,
+                            color: T.green,
+                          }}
+                        >
+                          {fmt(d.amount)}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            color: T.gold,
+                            background: T.goldSoft,
+                            padding: "3px 10px",
+                            borderRadius: 8,
+                          }}
+                        >
+                          DÉPÔT
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: T.inkSoft,
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {d.method}
+                        <br />
+                        Numéro de l'utilisateur : <strong>{d.phone}</strong>
+                        <br />
+                        Code transaction :{" "}
+                        <strong style={{ fontFamily: "monospace" }}>
+                          {d.transaction_code || "—"}
+                        </strong>
+                        <br />
+                        Reçu le{" "}
+                        {new Date(d.created_at).toLocaleDateString("fr-FR")}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <button
+                          onClick={() => handleDepositAction(d.id, true)}
+                          disabled={actionLoading === d.id + "a"}
+                          style={{
+                            flex: 1,
                             background: T.green,
                             border: "none",
-                            borderRadius: 8,
-                            padding: "4px 10px",
-                            fontSize: 11,
+                            borderRadius: 10,
+                            padding: "10px 0",
+                            fontSize: 13,
                             fontWeight: 700,
                             color: T.white,
                             cursor: "pointer",
                           }}
                         >
-                          Approuver
+                          {actionLoading === d.id + "a"
+                            ? "Crédit..."
+                            : "✓ Confirmer"}
                         </button>
                         <button
-                          onClick={() => handleAction(u.id, `refuse-${w.id}`)}
-                          disabled={actionLoading === u.id + `refuse-${w.id}`}
+                          onClick={() => handleDepositAction(d.id, false)}
+                          disabled={actionLoading === d.id + "r"}
                           style={{
-                            background: T.danger,
+                            flex: 1,
+                            background: "#FDECEA",
                             border: "none",
-                            borderRadius: 8,
-                            padding: "4px 10px",
-                            fontSize: 11,
+                            borderRadius: 10,
+                            padding: "10px 0",
+                            fontSize: 13,
                             fontWeight: 700,
-                            color: T.white,
+                            color: T.danger,
                             cursor: "pointer",
                           }}
                         >
                           Refuser
                         </button>
                       </div>
-                    ),
-                )}
-              {(!u.withdrawals ||
-                u.withdrawals.filter((w) => w.status === "en attente")
-                  .length === 0) && (
-                <span style={{ fontSize: 11.5, color: T.inkSoft }}>
-                  Aucune demande en attente
-                </span>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: T.inkSoft,
+                          margin: "8px 0 0",
+                        }}
+                      >
+                        💡 Confirmer crédite immédiatement{" "}
+                        <strong>{fmt(d.amount)}</strong> sur le compte de{" "}
+                        {u.username}.
+                      </p>
+                    </div>
+                  ))}
+
+                  {/* Retraits en attente */}
+                  {(u.pendingWithdrawals || []).map((w) => (
+                    <div
+                      key={w.id}
+                      style={{
+                        background: T.white,
+                        borderRadius: 12,
+                        padding: "12px 14px",
+                        marginBottom: 8,
+                        border: `1px solid ${T.border}`,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 800,
+                            color: T.ink,
+                          }}
+                        >
+                          {fmt(w.amount)}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            color: T.gold,
+                            background: T.goldSoft,
+                            padding: "3px 10px",
+                            borderRadius: 8,
+                          }}
+                        >
+                          RETRAIT
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12, color: T.inkSoft }}>
+                        {w.method}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <button
+                          onClick={() =>
+                            state.showToast(
+                              "Utilise la confirmation de dépôt pour valider cet utilisateur.",
+                              "error",
+                            )
+                          }
+                          style={{
+                            flex: 1,
+                            background: T.green,
+                            border: "none",
+                            borderRadius: 10,
+                            padding: "10px 0",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: T.white,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Confirmer
+                        </button>
+                        <button
+                          style={{
+                            flex: 1,
+                            background: "#FDECEA",
+                            border: "none",
+                            borderRadius: 10,
+                            padding: "10px 0",
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: T.danger,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Refuser
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -88,7 +88,6 @@ const api = {
   getReferrals: () => api.request("/referrals/list"),
 
   /* ===== ADMIN ===== */
-  // AdminScreen attend { stats, users } — on combine les 2 appels backend
   adminStats: async () => {
     const [statsRes, usersRes] = await Promise.all([
       api.request("/admin/stats"),
@@ -101,6 +100,19 @@ const api = {
     api.request("/admin/action", {
       method: "POST",
       body: JSON.stringify({ userId, action }),
+    }),
+
+  // NOUVEAU : confirmer / refuser un dépôt depuis l'espace admin
+  adminApproveDeposit: (depositId) =>
+    api.request("/admin/deposits/approve", {
+      method: "POST",
+      body: JSON.stringify({ depositId }),
+    }),
+
+  adminRejectDeposit: (depositId) =>
+    api.request("/admin/deposits/reject", {
+      method: "POST",
+      body: JSON.stringify({ depositId }),
     }),
 };
 
