@@ -6,7 +6,7 @@ const api = {
   async request(endpoint, options = {}) {
     const token = localStorage.getItem("lionToken");
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000); // 20s max
+    const timeout = setTimeout(() => controller.abort(), 20000);
 
     const config = {
       headers: {
@@ -87,8 +87,16 @@ const api = {
   getReferralStats: () => api.request("/referrals/stats"),
   getReferrals: () => api.request("/referrals/list"),
 
-  /* ===== ADMIN (utilisé par AdminScreen) ===== */
-  adminStats: () => api.request("/admin/stats"),
+  /* ===== ADMIN ===== */
+  // AdminScreen attend { stats, users } — on combine les 2 appels backend
+  adminStats: async () => {
+    const [statsRes, usersRes] = await Promise.all([
+      api.request("/admin/stats"),
+      api.request("/admin/users"),
+    ]);
+    return { stats: statsRes, users: usersRes.users || [] };
+  },
+
   adminAction: (userId, action) =>
     api.request("/admin/action", {
       method: "POST",

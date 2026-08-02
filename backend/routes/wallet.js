@@ -95,22 +95,46 @@ router.post("/deposit", (req, res) => {
 });
 
 /* ============================================================
-   POST /confirm-deposit — l'utilisateur saisit le code SMS
+   POST /confirm-deposit — saisir le code SMS (CORRIGÉ)
+   → Ne plante plus si l'ID du dépôt n'a pas été transmis :
+     il prend automatiquement le dernier dépôt en attente.
    ============================================================ */
 router.post("/confirm-deposit", (req, res) => {
   const { depositId, transactionCode } = req.body;
   const userId = req.user.id;
 
-  if (!depositId || !transactionCode) {
-    return res
-      .status(400)
-      .json({ error: "ID dépôt et code transaction requis" });
+  // 1. Le code de transaction est obligatoire
+  const code = transactionCode ? String(transactionCode).trim() : "";
+  if (!code) {
+    return res.status(400).json({ error: "Code de transaction requis" });
+  }
+
+  // 2. Déterminer le dépôt à confirmer
+  let targetId = Number(depositId);
+  if (!targetId) {
+    // ID manquant → dernier dépôt "pending" de l'utilisateur
+    try {
+      const latest = req.db.exec(
+        "SELECT id FROM deposits WHERE user_id = ? AND status = 'pending' ORDER BY id DESC LIMIT 1",
+        [userId],
+      );
+      if (latest.length > 0 && latest[0].values.length > 0) {
+        targetId = latest[0].values[0][0];
+      } else {
+        return res.status(404).json({
+          error: "Aucun dépôt en attente. Reprends le dépôt depuis le début.",
+        });
+      }
+    } catch (err) {
+      console.error("Erreur recherche dernier dépôt :", err);
+      return res.status(500).json({ error: "Erreur serveur" });
+    }
   }
 
   try {
     const result = req.db.exec(
       "SELECT * FROM deposits WHERE id = ? AND user_id = ?",
-      [depositId, userId],
+      [targetId, userId],
     );
 
     if (result.length === 0 || result[0].values.length === 0) {
@@ -126,8 +150,8 @@ router.post("/confirm-deposit", (req, res) => {
     }
 
     req.db.exec(
-      "UPDATE deposits SET transaction_code = ?, status = 'pending_admin', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [String(transactionCode), depositId],
+      "UPDATE deposits SET transaction_code = ?, status = 'pending_admin', updated_at = datetime('now', 'localtime') WHERE id = ?",
+      [code, targetId],
     );
     saveDb();
 
@@ -135,7 +159,7 @@ router.post("/confirm-deposit", (req, res) => {
       success: true,
       message:
         "Code enregistré. En attente de validation par l'administrateur.",
-      deposit: { id: depositId, status: "pending_admin" },
+      deposit: { id: targetId, status: "pending_admin" },
     });
   } catch (err) {
     console.error("Erreur confirmation dépôt :", err);
@@ -174,7 +198,6 @@ router.post("/withdraw", (req, res) => {
       return res.status(400).json({ error: "Solde insuffisant" });
     }
 
-    // Débiter immédiatement (remboursé si refusé par l'admin)
     req.db.exec("UPDATE users SET balance = balance - ? WHERE id = ?", [
       amt,
       userId,
@@ -206,13 +229,13 @@ router.post("/withdraw", (req, res) => {
 });
 
 /* ============================================================
-   GET /history — historique complet (dépôts + retraits + achats)
+   GET /history — historique complet
    ============================================================ */
 router.get("/history", (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Dépôts (table deposits : user_id, phone, created_at)
+    // Dépôts
     let deposits = [];
     try {
       const d = req.db.exec(
@@ -241,7 +264,7 @@ router.get("/history", (req, res) => {
       console.error("Historique dépôts:", e);
     }
 
-    // Retraits (table withdrawals : userId, date)
+    // Retraits
     let withdrawals = [];
     try {
       const w = req.db.exec(
@@ -262,7 +285,7 @@ router.get("/history", (req, res) => {
       console.error("Historique retraits:", e);
     }
 
-    // Achats (table purchases : userId, product, date)
+    // Achats
     let purchases = [];
     try {
       const p = req.db.exec(
@@ -290,10 +313,8 @@ router.get("/history", (req, res) => {
 });
 
 /* ============================================================
-   ADMIN — dépôts en attente de validation
+   ADMIN — dépôts en attente
    ============================================================ */
-
-// Liste des dépôts en attente (pending_admin)
 router.get("/admin/deposits/pending", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
@@ -327,7 +348,6 @@ router.get("/admin/deposits/pending", (req, res) => {
   }
 });
 
-// Approuver un dépôt → crédite le solde
 router.post("/admin/deposits/approve", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });
@@ -355,7 +375,6 @@ router.post("/admin/deposits/approve", (req, res) => {
       return res.status(400).json({ error: "Ce dépôt n'est pas en attente" });
     }
 
-    // Créditer le solde
     req.db.exec("UPDATE users SET balance = balance + ? WHERE id = ?", [
       amount,
       depositUserId,
@@ -376,7 +395,6 @@ router.post("/admin/deposits/approve", (req, res) => {
   }
 });
 
-// Refuser un dépôt
 router.post("/admin/deposits/reject", (req, res) => {
   if (!isAdmin(req)) {
     return res.status(403).json({ error: "Accès réservé à l'administrateur" });

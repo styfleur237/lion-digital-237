@@ -2141,6 +2141,9 @@ function WalletScreen({ state }) {
 /* ============================================================
    DEPOSIT SCREEN (NOUVEAU — USSD + Validation admin)
    ============================================================ */
+/* ============================================================
+   DEPOSIT SCREEN — USSD + code transaction + validation admin
+   ============================================================ */
 function DepositScreen({ state }) {
   const [step, setStep] = useState("form"); // form → instructions → confirmation
   const [method, setMethod] = useState("mtn");
@@ -2159,6 +2162,7 @@ function DepositScreen({ state }) {
       ? `*126*${current.number}*${parseInt(amount) || 0}#`
       : `#144#*${current.number}*${parseInt(amount) || 0}#`;
 
+  // Étape 1 : initier le dépôt
   const submitDeposit = async (e) => {
     e.preventDefault();
     setError("");
@@ -2175,7 +2179,10 @@ function DepositScreen({ state }) {
     setLoading(true);
     try {
       const res = await api.deposit(parseInt(amount), current.name, phone);
-      setDepositId(res.deposit?.id || res.id);
+      console.log("Dépôt créé :", res);
+      const newId = res.deposit?.id || res.id;
+      setDepositId(newId);
+      console.log("depositId enregistré :", newId);
       setStep("instructions");
     } catch (err) {
       setError(err.message);
@@ -2184,19 +2191,26 @@ function DepositScreen({ state }) {
     }
   };
 
+  // Étape 2 : confirmer avec le code SMS
   const confirmDeposit = async () => {
     setError("");
-    if (!transactionCode || transactionCode.length < 4) {
+
+    const code = (transactionCode || "").trim();
+    if (!code || code.length < 4) {
       setError("Saisis le code de transaction reçu par SMS");
       return;
     }
 
+    console.log("Confirmation → depositId :", depositId, "| code :", code);
+
     setLoading(true);
     try {
-      await api.confirmDeposit(depositId, transactionCode);
+      const res = await api.confirmDeposit(depositId, code);
+      console.log("Confirmation OK :", res);
       setSuccess(true);
       setStep("confirmation");
     } catch (err) {
+      console.error("Erreur confirmation :", err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -2214,7 +2228,6 @@ function DepositScreen({ state }) {
 
       {step === "form" && (
         <div style={{ padding: "18px 20px 32px" }}>
-          {/* Choix méthode */}
           <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
             {Object.entries(MERCHANT).map(([key, m]) => (
               <button
@@ -2253,7 +2266,6 @@ function DepositScreen({ state }) {
               onChange={(e) => setAmount(e.target.value)}
             />
 
-            {/* Quick amounts */}
             <div
               style={{
                 display: "flex",
@@ -2435,7 +2447,7 @@ function DepositScreen({ state }) {
             </div>
           </div>
 
-          {/* Étape 2 - USSD */}
+          {/* Étape 2 */}
           <div
             style={{
               background: T.grayBg,
@@ -2655,14 +2667,7 @@ function DepositScreen({ state }) {
             >
               Dépôt soumis !
             </h2>
-            <p
-              style={{
-                fontSize: 14,
-                color: T.inkSoft,
-                margin: "0 0 4px",
-                lineHeight: 1.5,
-              }}
-            >
+            <p style={{ fontSize: 14, color: T.inkSoft, margin: "0 0 4px" }}>
               Ton dépôt de{" "}
               <strong>{parseInt(amount).toLocaleString("fr-FR")} FCFA</strong>{" "}
               via {current.name}
@@ -2733,10 +2738,7 @@ function DepositScreen({ state }) {
             </div>
 
             <button
-              onClick={() => {
-                state.goBack();
-                state.goBack();
-              }}
+              onClick={() => state.goBack()}
               style={{
                 width: "100%",
                 padding: "14px",
@@ -3161,11 +3163,10 @@ function ProfileScreen({ state }) {
 
   const handleLogout = () => setShowLogoutConfirm(true);
   const confirmLogout = () => {
-    localStorage.removeItem("lionToken");
     NOTIFS.length = 0;
     REWARDS.length = 0;
     setShowLogoutConfirm(false);
-    state.goTo("welcome");
+    state.logout();
   };
 
   if (loading)
@@ -3356,6 +3357,31 @@ function ProfileScreen({ state }) {
             {window.location.origin}/register?ref={user.id || user.phone}
           </div>
         </div>
+        {/* Espace admin (visible uniquement pour les administrateurs) */}
+        {user.role === "admin" && (
+          <button
+            onClick={() => state.openSub("admin")}
+            style={{
+              width: "100%",
+              padding: "14px",
+              borderRadius: 14,
+              border: `1.5px solid ${T.gold}`,
+              background: T.goldSoft,
+              color: T.ink,
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              marginBottom: 20,
+            }}
+          >
+            <ShieldCheck size={18} color={T.gold} />
+            Espace administrateur
+          </button>
+        )}
 
         {/* Déconnexion */}
         <button
